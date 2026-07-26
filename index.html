@@ -1,1 +1,4190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>YARANA · social circle</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { background: #0D0B21; color: #f0f0fc; overflow-x: hidden; }
+    .glass {
+      background: rgba(13, 11, 33, 0.55);
+      backdrop-filter: blur(14px) saturate(180%);
+      -webkit-backdrop-filter: blur(14px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 2rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    .glow-border { box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.3), 0 0 20px rgba(0, 240, 255, 0.2); }
+    .neon-text { text-shadow: 0 0 12px #FF2E93, 0 0 30px #FF2E93; }
+    .coin-glow { text-shadow: 0 0 8px #FFD700, 0 0 20px #FFD70055; }
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255, 46, 147, 0.15);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      font-size: 0.7rem;
+      padding: 0.25rem;
+      text-align: center;
+      color: white;
+      animation: float 6s infinite alternate ease-in-out;
+    }
+    .bubble:hover { transform: scale(1.08); border-color: #FF2E93; }
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(8px, -18px) scale(1.02); }
+    }
+    .bottom-nav {
+      background: rgba(13, 11, 33, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .nav-item.active i { color: #00F0FF; text-shadow: 0 0 16px #00F0FF; }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 0.6rem 1rem;
+      border-radius: 1.8rem;
+      margin-bottom: 0.4rem;
+    }
+    .chat-bubble.me { background: #FF2E93; align-self: flex-end; border-bottom-right-radius: 0.4rem; }
+    .chat-bubble.other { background: #2a1f4a; align-self: flex-start; border-bottom-left-radius: 0.4rem; }
+    ::-webkit-scrollbar { width: 0; background: transparent; }
+    .screen { display: none !important; }
+    .screen.active { display: block !important; }
+    .drawer {
+      position: fixed; top: 0; left: -300px; width: 280px; height: 100vh;
+      background: rgba(13, 11, 33, 0.95); backdrop-filter: blur(24px);
+      border-right: 1px solid rgba(255,255,255,0.05);
+      transition: left 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+      z-index: 999;
+      padding: 1.5rem 1rem;
+      overflow-y: auto;
+    }
+    .drawer.open { left: 0; }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 998; display: none; }
+    .overlay.show { display: block; }
+    .onboarding-dot { width: 8px; height: 8px; border-radius: 10px; background: rgba(255,255,255,0.3); transition: 0.2s; }
+    .onboarding-dot.active { background: white; width: 20px; }
+    .ad-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+      z-index: 9999; display: none; align-items: center; justify-content: center; flex-direction: column;
+    }
+    .matching-ring {
+      border: 4px solid rgba(0, 240, 255, 0.1);
+      border-top: 4px solid #00F0FF;
+      border-radius: 50%;
+      width: 120px;
+      height: 120px;
+      animation: spin 1.5s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .tooltip-yellow {
+      background: #FFD700;
+      color: #0D0B21;
+      padding: 0.5rem 1rem;
+      border-radius: 2rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(255,215,0,0.4);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      animation: pulse-glow 1.8s infinite;
+    }
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 0 0 rgba(255,215,0,0.4); }
+      70% { box-shadow: 0 0 20px 8px rgba(255,215,0,0.2); }
+      100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.4); }
+    }
+    .bottom-sheet {
+      position: fixed; bottom: -100%; left: 0; right: 0; z-index: 9999;
+      background: #0D0B21; border-radius: 2rem 2rem 0 0;
+      padding: 1.5rem; transition: bottom 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+      max-height: 80vh; overflow-y: auto;
+    }
+    .bottom-sheet.open { bottom: 0; }
+    .sheet-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      z-index: 9998; display: none;
+    }
+    .sheet-overlay.show { display: block; }
+    .modal-full {
+      position: fixed; inset: 0; z-index: 9999; background: #0D0B21; overflow-y: auto;
+      padding: 1.5rem 1rem; display: none;
+    }
+    .modal-full.open { display: block; }
+    .seat-active { border: 2px solid #00F0FF; box-shadow: 0 0 20px rgba(0,240,255,0.2); }
+    .gift-item { transition: all 0.2s; cursor: pointer; }
+    .gift-item:hover { transform: scale(1.05); }
+    .countdown-number {
+      font-size: 12rem;
+      font-weight: 900;
+      color: white;
+      text-shadow: 0 0 60px rgba(255,255,255,0.3);
+      animation: pop 0.6s ease-out;
+    }
+    @keyframes pop {
+      0% { transform: scale(0.3); opacity: 0; }
+      70% { transform: scale(1.15); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .countdown-bg-wave {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 20px, transparent 20px, transparent 40px);
+    }
+    .countdown-bg-wave::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at 20% 80%, rgba(255,255,255,0.08) 0%, transparent 60%);
+    }
+    .frnd-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 1.5rem;
+      padding: 1rem;
+      transition: all 0.2s;
+    }
+    .frnd-card:hover { background: rgba(255,255,255,0.07); }
+    .story-ring {
+      width: 64px; height: 64px; border-radius: 50%; padding: 3px;
+      background: linear-gradient(135deg, #FF2E93, #A855F7);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .story-ring:hover { transform: scale(1.05); }
+    .story-ring.purple { background: linear-gradient(135deg, #A855F7, #7C3AED); }
+    .story-ring.blue { background: linear-gradient(135deg, #3B82F6, #60A5FA); }
+    .story-ring .inner-avatar {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: #0D0B21;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; font-weight: 600; color: white;
+    }
+    .toast-notification {
+      position: sticky; bottom: 80px; z-index: 50;
+      margin: 0 0.5rem;
+      backdrop-filter: blur(20px);
+      transition: all 0.5s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    .toast-notification.hidden-toast {
+      opacity: 0; transform: translateY(20px); pointer-events: none;
+    }
+    .follow-btn {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid #4a3a6a;
+      background: transparent;
+      color: #4a3a6a;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.2s;
+      font-size: 12px;
+    }
+    .follow-btn.followed {
+      border-color: #00F0FF;
+      background: #00F0FF20;
+      color: #00F0FF;
+    }
+    #countdownOverlay {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #6D39FF;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .profile-avatar-img {
+      width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+    }
+    .gender-card {
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .gender-card.selected {
+      border: 2px solid #00F0FF;
+      background: rgba(0, 240, 255, 0.1);
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.15);
+    }
+    .gender-card:hover { transform: scale(1.02); }
 
+    /* ===== CALL UI STYLES ===== */
+    .call-avatar-ring {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      padding: 4px;
+      background: linear-gradient(135deg, #FF2E93, #00F0FF);
+      box-shadow: 0 0 60px rgba(255, 46, 147, 0.3), 0 0 120px rgba(0, 240, 255, 0.15);
+      position: relative;
+    }
+    .call-avatar-ring .inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #0D0B21;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      overflow: hidden;
+    }
+    .call-avatar-ring .inner img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    .call-avatar-ring.you-ring {
+      background: linear-gradient(135deg, #A855F7, #6D39FF);
+      box-shadow: 0 0 40px rgba(168, 85, 247, 0.25);
+    }
+    .call-control-btn {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f0f0fc;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .call-control-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: scale(1.05);
+    }
+    .call-control-btn.end-call {
+      background: #FF2E93;
+      border-color: #FF2E93;
+      box-shadow: 0 0 40px rgba(255, 46, 147, 0.4);
+      width: 72px;
+      height: 72px;
+      font-size: 1.8rem;
+    }
+    .call-control-btn.end-call:hover {
+      background: #e61a7a;
+      transform: scale(1.08);
+      box-shadow: 0 0 60px rgba(255, 46, 147, 0.6);
+    }
+    .call-control-btn.muted {
+      background: rgba(255, 46, 147, 0.25);
+      border-color: #FF2E93;
+      color: #FF2E93;
+    }
+    .call-waveform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 48px;
+      padding: 0 10px;
+    }
+    .call-waveform .bar {
+      width: 4px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, #00F0FF, #FF2E93);
+      animation: wave-bounce 0.8s infinite alternate ease-in-out;
+    }
+    .call-waveform .bar:nth-child(1) { height: 16px; animation-delay: 0.0s; }
+    .call-waveform .bar:nth-child(2) { height: 32px; animation-delay: 0.1s; }
+    .call-waveform .bar:nth-child(3) { height: 48px; animation-delay: 0.2s; }
+    .call-waveform .bar:nth-child(4) { height: 38px; animation-delay: 0.3s; }
+    .call-waveform .bar:nth-child(5) { height: 24px; animation-delay: 0.4s; }
+    .call-waveform .bar:nth-child(6) { height: 44px; animation-delay: 0.5s; }
+    .call-waveform .bar:nth-child(7) { height: 28px; animation-delay: 0.6s; }
+    .call-waveform .bar:nth-child(8) { height: 16px; animation-delay: 0.7s; }
+    .call-waveform .bar:nth-child(9) { height: 36px; animation-delay: 0.8s; }
+    .call-waveform .bar:nth-child(10) { height: 20px; animation-delay: 0.9s; }
+    .call-waveform .bar:nth-child(11) { height: 40px; animation-delay: 1.0s; }
+    .call-waveform .bar:nth-child(12) { height: 26px; animation-delay: 1.1s; }
+    .call-waveform .bar:nth-child(13) { height: 18px; animation-delay: 1.2s; }
+    .call-waveform .bar:nth-child(14) { height: 34px; animation-delay: 1.3s; }
+    .call-waveform .bar:nth-child(15) { height: 22px; animation-delay: 1.4s; }
+    .call-waveform .bar:nth-child(16) { height: 30px; animation-delay: 1.5s; }
+    @keyframes wave-bounce {
+      0% { transform: scaleY(0.3); opacity: 0.4; }
+      100% { transform: scaleY(1); opacity: 1; }
+    }
+    .call-avatar-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      position: relative;
+    }
+    .call-avatar-container .call-avatar-ring:first-child {
+      transform: translateY(10px);
+    }
+    .call-avatar-container .call-avatar-ring:last-child {
+      transform: translateY(-10px);
+    }
+    .call-status-badge {
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 20px;
+      padding: 4px 16px;
+      font-size: 0.7rem;
+      color: #00F0FF;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .call-status-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00F0FF;
+      animation: pulse-dot 1.2s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.7); }
+    }
+    .call-overlay-bg {
+      background: radial-gradient(ellipse at center 30%, rgba(255, 46, 147, 0.08), rgba(13, 11, 33, 0.95));
+    }
+
+    /* Incoming Call Modal */
+    .incoming-call-modal {
+      background: rgba(13, 11, 33, 0.95);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 2rem;
+      box-shadow: 0 8px 64px rgba(0, 0, 0, 0.8);
+      padding: 2rem;
+      width: 320px;
+      text-align: center;
+      animation: slideUp 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    @keyframes slideUp {
+      0% { opacity: 0; transform: translateY(40px) scale(0.95); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .incoming-call-modal .caller-avatar-lg {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      padding: 3px;
+      background: linear-gradient(135deg, #FF2E93, #00F0FF);
+      margin: 0 auto 12px;
+    }
+    .incoming-call-modal .caller-avatar-lg .inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #0D0B21;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      overflow: hidden;
+    }
+    .incoming-call-modal .caller-avatar-lg .inner img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    .incoming-call-modal .action-btns {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .incoming-call-modal .action-btns button {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      font-size: 1.4rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .incoming-call-modal .action-btns .accept {
+      background: #22c55e;
+      color: white;
+      box-shadow: 0 0 40px rgba(34, 197, 94, 0.3);
+    }
+    .incoming-call-modal .action-btns .accept:hover {
+      transform: scale(1.1);
+      box-shadow: 0 0 60px rgba(34, 197, 94, 0.5);
+    }
+    .incoming-call-modal .action-btns .decline {
+      background: #FF2E93;
+      color: white;
+      box-shadow: 0 0 40px rgba(255, 46, 147, 0.3);
+    }
+    .incoming-call-modal .action-btns .decline:hover {
+      transform: scale(1.1);
+      box-shadow: 0 0 60px rgba(255, 46, 147, 0.5);
+    }
+
+    /* Matching Overlay Advanced */
+    .matching-loader-text { transition: opacity 0.3s ease; }
+    .matching-progress-bar {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+    .matching-progress-bar .fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00F0FF, #FF2E93);
+      border-radius: 4px;
+      transition: width 0.8s ease;
+    }
+    .matching-status-steps {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 16px;
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.3);
+    }
+    .matching-status-steps .step { display: flex; align-items: center; gap: 4px; }
+    .matching-status-steps .step.active { color: #00F0FF; }
+    .matching-status-steps .step.done { color: #22c55e; }
+    .matching-status-steps .step .circle { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* Matching Shuffle Card */
+    .matching-shuffle-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1.5rem;
+      padding: 1.5rem 2rem;
+      text-align: center;
+      min-width: 200px;
+      transition: all 0.3s ease;
+    }
+    .matching-shuffle-card .shuffle-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      background: linear-gradient(135deg, #FF2E93, #00F0FF);
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .matching-shuffle-card .shuffle-avatar .inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #0D0B21;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .matching-shuffle-card .shuffle-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: white;
+      min-height: 2rem;
+      transition: all 0.15s ease;
+    }
+    .matching-shuffle-card .shuffle-status { font-size: 0.7rem; color: #22c55e; }
+    .matching-shuffle-card.shuffling .shuffle-name { animation: shuffle-flicker 0.1s ease; }
+    @keyframes shuffle-flicker {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; transform: scale(0.95); }
+    }
+
+    /* Custom Modals */
+    .custom-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 99999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .custom-modal-overlay.show { display: flex; }
+    .custom-modal {
+      background: #0D0B21;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 2rem;
+      padding: 2rem;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 8px 64px rgba(0,0,0,0.8);
+      animation: slideUp 0.4s cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+    .custom-modal h3 { font-size: 1.25rem; font-weight: 700; color: white; margin-bottom: 1rem; text-align: center; }
+    .custom-modal p { color: #9ca3af; font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; }
+    .custom-modal input, .custom-modal select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 1rem;
+      color: white;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .custom-modal input:focus, .custom-modal select:focus { border-color: #00F0FF; }
+    .custom-modal input::placeholder { color: #6b7280; }
+    .custom-modal .modal-actions { display: flex; gap: 12px; margin-top: 1.5rem; }
+    .custom-modal .modal-actions button {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 1rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .custom-modal .modal-actions .btn-secondary {
+      background: rgba(255,255,255,0.05);
+      color: #9ca3af;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .custom-modal .modal-actions .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .custom-modal .modal-actions .btn-primary {
+      background: linear-gradient(135deg, #FF2E93, #00F0FF);
+      color: white;
+    }
+    .custom-modal .modal-actions .btn-primary:hover { transform: scale(1.02); box-shadow: 0 0 30px rgba(255,46,147,0.3); }
+    .custom-modal .modal-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .custom-modal .modal-actions .btn-danger { background: #FF2E93; color: white; }
+    .custom-modal .modal-actions .btn-danger:hover { background: #e61a7a; }
+
+    /* Custom Toast */
+    .custom-toast {
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      z-index: 999999;
+      background: rgba(13, 11, 33, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1.5rem;
+      padding: 0.75rem 1.5rem;
+      color: white;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: all 0.5s cubic-bezier(0.2, 0.9, 0.3, 1);
+      pointer-events: none;
+      max-width: 90%;
+    }
+    .custom-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+    .custom-toast.success { border-left: 3px solid #22c55e; }
+    .custom-toast.error { border-left: 3px solid #FF2E93; }
+    .custom-toast.warning { border-left: 3px solid #FFD700; }
+    .custom-toast.info { border-left: 3px solid #00F0FF; }
+
+    /* New Onboarding Styles */
+    .onboarding-form-input {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1rem;
+      padding: 0.75rem 1rem;
+      color: white;
+      width: 100%;
+      font-size: 0.9rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .onboarding-form-input:focus { border-color: #00F0FF; box-shadow: 0 0 20px rgba(0,240,255,0.1); }
+    .onboarding-form-input::placeholder { color: #6b7280; }
+    .onboarding-form-label {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-bottom: 0.25rem;
+      display: block;
+    }
+    .gender-select-trigger {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1rem;
+      padding: 0.75rem 1rem;
+      color: white;
+      width: 100%;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+    .gender-select-trigger:hover { border-color: #00F0FF; }
+    .gender-select-trigger .badge {
+      background: #00F0FF20;
+      color: #00F0FF;
+      padding: 0.15rem 0.6rem;
+      border-radius: 1rem;
+      font-size: 0.7rem;
+    }
+
+    /* Gender Bottom Sheet */
+    .gender-sheet-option {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      border-radius: 1.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid transparent;
+    }
+    .gender-sheet-option:hover { background: rgba(255,255,255,0.05); }
+    .gender-sheet-option.selected { border-color: #00F0FF; background: rgba(0,240,255,0.05); }
+    .gender-sheet-option .icon-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+    .gender-sheet-option .icon-box.pink { background: #FF2E9320; color: #FF2E93; }
+    .gender-sheet-option .icon-box.blue { background: #00F0FF20; color: #00F0FF; }
+
+    /* Language Grid */
+    .lang-grid-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 1rem;
+      padding: 0.75rem 0.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .lang-grid-card:hover { background: rgba(255,255,255,0.08); }
+    .lang-grid-card.selected { border-color: #00F0FF; background: rgba(0,240,255,0.05); }
+    .lang-grid-card .check-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #00F0FF;
+      color: #0D0B21;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+    .lang-grid-card.selected .check-badge { display: flex; }
+    .lang-grid-card .lang-emoji { font-size: 1.8rem; display: block; margin-bottom: 4px; }
+    .lang-grid-card .lang-name { font-size: 0.7rem; color: #d1d5db; }
+
+    /* Calendar Modal - Custom Year Picker Styles */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .calendar-grid .day-header { font-size: 0.6rem; color: #6b7280; text-align: center; padding: 4px; }
+    .calendar-grid .day-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 0.75rem;
+      color: #d1d5db;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .calendar-grid .day-cell:hover { background: rgba(255,255,255,0.05); }
+    .calendar-grid .day-cell.selected { background: #FF2E93; color: white; }
+    .calendar-grid .day-cell.other-month { color: #4a4a6a; }
+    .calendar-grid .day-cell.today { border: 1px solid rgba(255,255,255,0.1); }
+
+    /* Custom Year Picker - Glassmorphic Grid */
+    .year-trigger-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 0.75rem;
+      padding: 0.4rem 1rem;
+      color: white;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .year-trigger-btn:hover { border-color: #00F0FF; }
+    .year-trigger-btn i { font-size: 0.7rem; color: #6b7280; }
+
+    .year-picker-popup {
+      background: rgba(13, 11, 33, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 1.5rem;
+      padding: 1rem;
+      max-height: 260px;
+      overflow-y: auto;
+      display: none;
+      margin-top: 8px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.1) transparent;
+    }
+    .year-picker-popup::-webkit-scrollbar { width: 4px; }
+    .year-picker-popup::-webkit-scrollbar-track { background: transparent; }
+    .year-picker-popup::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    .year-picker-popup.open { display: block; }
+
+    .year-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .year-grid .year-cell {
+      padding: 10px 4px;
+      border-radius: 0.75rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #d1d5db;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid transparent;
+    }
+    .year-grid .year-cell:hover { 
+      background: rgba(255,255,255,0.08); 
+      border-color: rgba(255,255,255,0.1);
+    }
+    .year-grid .year-cell.selected { 
+      background: #FF2E93; 
+      color: white; 
+      border-color: #FF2E93;
+      box-shadow: 0 0 20px rgba(255,46,147,0.3);
+    }
+    .year-grid .year-cell.current { 
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* Welcome Dashboard */
+    .expert-avatar-cluster {
+      display: flex;
+      justify-content: center;
+      gap: -10px;
+      margin: 1rem 0;
+    }
+    .expert-avatar-cluster .avatar-item {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px solid #0D0B21;
+      margin-left: -12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      background: linear-gradient(135deg, #FF2E93, #A855F7);
+      color: white;
+      font-weight: 600;
+    }
+    .expert-avatar-cluster .avatar-item:first-child { margin-left: 0; }
+    .expert-avatar-cluster .avatar-item .star { font-size: 0.5rem; }
+
+    /* Create Room Bottom Sheet */
+    .room-type-option {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .room-type-option:hover { background: rgba(255,255,255,0.05); }
+    .room-type-option.selected { border-color: #00F0FF; background: rgba(0,240,255,0.05); }
+    .room-type-option .radio-circle {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #4a4a6a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .room-type-option.selected .radio-circle { border-color: #00F0FF; }
+    .room-type-option.selected .radio-circle::after {
+      content: '';
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #00F0FF;
+    }
+    .room-type-option .room-icon { font-size: 1.5rem; }
+    .room-type-option .room-name { font-weight: 500; color: white; }
+    .room-type-option .room-desc { font-size: 0.7rem; color: #6b7280; }
+
+    /* Husky SVG Styles */
+    .husky-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .husky-container svg {
+      width: 180px;
+      height: 140px;
+    }
+    .pupil {
+      transition: all 0.3s ease;
+    }
+    .eye-whites {
+      fill: white;
+    }
+    .pupil {
+      fill: #1a1a2e;
+    }
+    .husky-body {
+      fill: #c0a080;
+    }
+    .husky-dark {
+      fill: #8b7355;
+    }
+    .husky-nose {
+      fill: #1a1a2e;
+    }
+  </style>
+</head>
+<body>
+
+<!-- SIDE DRAWER -->
+<div class="drawer" id="sideDrawer">
+  <div class="flex items-center gap-3 mb-4">
+    <div class="relative">
+      <div class="w-14 h-14 rounded-full bg-gradient-to-br from-[#FF2E93] to-[#00F0FF] p-[2px]">
+        <div class="w-full h-full rounded-full bg-[#0D0B21] flex items-center justify-center text-2xl overflow-hidden">
+          <img id="drawerAvatarImg" class="profile-avatar-img" src="" alt="avatar" style="display:none;">
+          <span id="drawerAvatarFallback">😎</span>
+        </div>
+      </div>
+      <div class="absolute -bottom-1 -right-1 bg-[#0D0B21] rounded-full p-0.5"><i class="fas fa-pen text-[10px] text-[#00F0FF]"></i></div>
+    </div>
+    <div>
+      <div class="font-bold text-white flex items-center gap-1"><span id="drawerUserName">Max</span> <i class="fas fa-check-circle text-[#00F0FF] text-xs"></i></div>
+      <div class="text-xs text-gray-400" id="drawerUserDetails">Maharashtra · 18-21</div>
+    </div>
+  </div>
+  <div class="border-t border-white/10 my-2"></div>
+  <div class="space-y-3 text-sm text-gray-200">
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-thumbs-down text-red-400 w-5"></i> Warnings</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openModal('rewardWalletModal')"><i class="fas fa-wallet text-orange-400 w-5"></i> Wallet · <span class="coin-glow" id="drawerCoins">0</span> coins</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openModal('transactionHistoryModal')"><i class="fas fa-exchange-alt text-blue-400 w-5"></i> Transactions</div>
+    <div class="border-t border-white/10 my-2"></div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-headset text-pink-400 w-5"></i> Customer Support</div>
+    <div class="border-t border-white/10 my-2"></div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openModal('editProfileModal')"><i class="fas fa-user-edit text-purple-400 w-5"></i> Edit Profile</div>
+    <div class="border-t border-white/10 my-2"></div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openModal('blockedChatsModal')"><i class="fas fa-ban text-red-500 w-5"></i> Blocked Chats</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-smile text-yellow-400 w-5"></i> Feedback</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-shield-alt text-blue-300 w-5"></i> Privacy Policy</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-file-contract text-gray-400 w-5"></i> Terms of Use</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer"><i class="fas fa-users text-green-300 w-5"></i> Community Guidelines</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openBottomSheet('appLanguageBottomSheet')"><i class="fas fa-globe text-cyan-300 w-5"></i> App Language</div>
+    <div class="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer" onclick="openModal('settingsModal')"><i class="fas fa-cog text-gray-400 w-5"></i> Settings</div>
+  </div>
+  <div class="mt-4 p-3 glass text-center rounded-2xl cursor-pointer" onclick="triggerAd()">
+    <span class="text-[#FFD700] text-sm">📺 Watch Ad +10 Coins</span>
+  </div>
+</div>
+<div class="overlay" id="drawerOverlay" onclick="toggleDrawer()"></div>
+
+<!-- ===== CALL OVERLAY ===== -->
+<div id="callOverlay" class="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-xl hidden call-overlay-bg">
+  <div class="w-full max-w-sm mx-4 p-6 rounded-3xl bg-[#0D0B21]/90 border border-white/5 shadow-2xl">
+    <div class="flex justify-between items-center mb-4">
+      <span class="text-sm font-medium text-gray-400">Audio Call</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-[#FFD700]"><i class="fas fa-coins"></i> <span id="callCoinsBalance">0</span></span>
+        <span class="text-xs text-gray-500" id="callTimer">00:00</span>
+      </div>
+    </div>
+    <div class="call-avatar-container mb-4">
+      <div class="call-avatar-ring you-ring">
+        <div class="inner" id="callerAvatarContainer">
+          <span id="callerAvatarFallback" class="text-3xl">😎</span>
+          <img id="callerAvatarImg" style="display:none;" class="profile-avatar-img" src="" alt="you">
+        </div>
+      </div>
+      <div class="text-2xl text-[#FF2E93] opacity-60 animate-pulse">❤️</div>
+      <div class="call-avatar-ring">
+        <div class="inner" id="partnerAvatarContainer">
+          <span id="partnerAvatarFallback" class="text-3xl">👤</span>
+          <img id="partnerAvatarImg" style="display:none;" class="profile-avatar-img" src="" alt="partner">
+        </div>
+      </div>
+    </div>
+    <div class="text-center mb-1">
+      <div class="flex items-center justify-center gap-3 text-sm">
+        <span class="font-semibold text-gray-400">You</span>
+        <span class="text-gray-600">·</span>
+        <span class="font-bold text-white text-lg" id="callName">Priya</span>
+      </div>
+      <div class="flex items-center justify-center gap-2 mt-1">
+        <span class="call-status-badge"><span class="dot"></span> <span id="callStatus">Live</span></span>
+        <span class="text-xs text-gray-500" id="callSubStatus">Feeling Lonely</span>
+      </div>
+    </div>
+    <div class="call-waveform my-4">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+    <div class="flex items-center justify-center gap-6 mt-2">
+      <button class="call-control-btn" id="speakerBtn" onclick="toggleSpeaker()"><i class="fas fa-volume-up"></i></button>
+      <button class="call-control-btn end-call" onclick="endCall()"><i class="fas fa-phone-slash"></i></button>
+      <button class="call-control-btn" id="micBtn" onclick="toggleMicrophone()"><i class="fas fa-microphone"></i></button>
+    </div>
+    <div class="text-center mt-4 text-[10px] text-gray-600"><span>🔒 End-to-end encrypted · P2P</span></div>
+  </div>
+</div>
+
+<!-- ===== INCOMING CALL MODAL ===== -->
+<div id="incomingCallModal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md hidden">
+  <div class="incoming-call-modal">
+    <div class="caller-avatar-lg mx-auto">
+      <div class="inner" id="incomingCallerAvatar">
+        <span id="incomingAvatarFallback" class="text-3xl">👤</span>
+        <img id="incomingAvatarImg" style="display:none;" class="profile-avatar-img" src="" alt="caller">
+      </div>
+    </div>
+    <h3 class="text-xl font-bold text-white" id="incomingCallerName">Unknown</h3>
+    <p class="text-sm text-gray-400 mt-1 ringing-text">📞 Incoming call...</p>
+    <div class="action-btns">
+      <button class="decline" onclick="declineIncomingCall()"><i class="fas fa-phone-slash"></i></button>
+      <button class="accept" onclick="acceptIncomingCall()"><i class="fas fa-phone"></i></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== GENDER BOTTOM SHEET ===== -->
+<div class="sheet-overlay" id="genderSheetOverlay" onclick="closeGenderSheet()"></div>
+<div id="genderBottomSheet" class="bottom-sheet">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="text-xl font-bold">Select your true gender</h3>
+    <button onclick="closeGenderSheet()" class="text-2xl"><i class="fas fa-times"></i></button>
+  </div>
+  <p class="text-sm text-red-400 mb-4">⚠️ Wrong Gender = Life Ban 🚫</p>
+  <div class="space-y-3">
+    <div class="gender-sheet-option" data-gender="female" onclick="selectGenderFromSheet('female')">
+      <div class="icon-box pink">👩</div>
+      <div><div class="font-semibold text-white">I am Girl</div><div class="text-xs text-gray-400">Female</div></div>
+      <div class="ml-auto"><i class="fas fa-chevron-right text-gray-500"></i></div>
+    </div>
+    <div class="gender-sheet-option" data-gender="male" onclick="selectGenderFromSheet('male')">
+      <div class="icon-box blue">👦</div>
+      <div><div class="font-semibold text-white">I am Boy</div><div class="text-xs text-gray-400">Male</div></div>
+      <div class="ml-auto"><i class="fas fa-chevron-right text-gray-500"></i></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CALENDAR BOTTOM SHEET ===== -->
+<div class="sheet-overlay" id="calendarSheetOverlay" onclick="closeCalendarSheet()"></div>
+<div id="calendarBottomSheet" class="bottom-sheet">
+  <div class="flex justify-between items-center mb-2">
+    <h3 class="text-xl font-bold"><span id="calendarMonthYear">July 2008</span></h3>
+    <div class="flex gap-2">
+      <button onclick="changeCalendarMonth(-1)" class="glass p-1.5 rounded-full text-sm"><i class="fas fa-chevron-left"></i></button>
+      <button onclick="changeCalendarMonth(1)" class="glass p-1.5 rounded-full text-sm"><i class="fas fa-chevron-right"></i></button>
+    </div>
+  </div>
+  
+  <!-- Custom Year Picker Trigger -->
+  <div class="flex justify-center mb-2">
+    <button class="year-trigger-btn" onclick="toggleYearPicker()">
+      <span id="yearDisplayText">2008</span>
+      <i class="fas fa-chevron-down"></i>
+    </button>
+  </div>
+  
+  <!-- Year Picker Popup -->
+  <div class="year-picker-popup" id="yearPickerPopup">
+    <div class="year-grid" id="yearGrid"></div>
+  </div>
+  
+  <div class="calendar-grid" id="calendarGrid"></div>
+</div>
+
+<!-- ===== MATCHING OVERLAY ===== -->
+<div id="matchingOverlay" class="fixed inset-0 z-[999] bg-[#0D0B21] flex flex-col items-center justify-center hidden">
+  <div class="relative flex items-center justify-center my-4">
+    <div class="matching-ring"></div>
+    <div class="absolute w-20 h-20 rounded-full bg-[#FF2E93]/20 flex items-center justify-center text-3xl">👧</div>
+  </div>
+  <div class="w-16 h-16 rounded-full bg-[#00F0FF]/20 flex items-center justify-center text-2xl mb-4">👦 <p class="text-xs absolute mt-12 text-gray-400">You</p></div>
+  <div class="matching-shuffle-card shuffling">
+    <div class="shuffle-avatar"><div class="inner" id="shuffleAvatar">😊</div></div>
+    <div class="shuffle-name" id="shuffleName">Finding...</div>
+    <div class="shuffle-status" id="shuffleStatus">🔄 Searching</div>
+  </div>
+  <p class="text-lg font-bold text-gray-200 matching-loader-text mt-4" id="matchingStatusText">Finding your perfect match...</p>
+  <div class="matching-progress-bar w-64"><div class="fill" id="matchingProgressFill" style="width:0%;"></div></div>
+  <div class="matching-status-steps">
+    <span class="step active" id="step1"><span class="circle"></span> Search</span>
+    <span class="step" id="step2"><span class="circle"></span> Connect</span>
+    <span class="step" id="step3"><span class="circle"></span> Secure</span>
+  </div>
+  <button id="cancelMatchingBtn" onclick="cancelMatching()" class="mt-8 px-6 py-2 glass text-xs text-red-400 border border-red-500/30 hover:bg-red-500/10 transition">Cancel</button>
+</div>
+
+<!-- ===== AD OVERLAY ===== -->
+<div id="adOverlay" class="ad-overlay">
+  <div class="glass p-8 text-center max-w-xs w-full">
+    <i class="fas fa-video text-5xl text-[#FF2E93] mb-3"></i>
+    <p class="text-xl font-bold">📺 Watching Ad</p>
+    <p class="text-sm text-gray-300">Earn 10 coins in <span id="adCountdown">5</span>s</p>
+    <div class="w-full h-2 bg-gray-700 rounded-full mt-3"><div id="adProgress" class="h-full bg-[#FFD700] rounded-full" style="width:0%"></div></div>
+  </div>
+</div>
+
+<!-- ===== CREATE ROOM BOTTOM SHEET ===== -->
+<div class="sheet-overlay" id="createRoomSheetOverlay" onclick="closeCreateRoomSheet()"></div>
+<div id="createRoomBottomSheet" class="bottom-sheet">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="text-xl font-bold">Create Room</h3>
+    <button onclick="closeCreateRoomSheet()" class="text-2xl"><i class="fas fa-times"></i></button>
+  </div>
+  <p class="text-sm text-gray-400 mb-4">Choose your room type</p>
+  <div class="space-y-3">
+    <div class="room-type-option selected" data-theme="ludo" onclick="selectRoomType('ludo')">
+      <div class="radio-circle"></div>
+      <span class="room-icon">🎸</span>
+      <div><div class="room-name">Ludo Match</div><div class="room-desc">Classic board game fun</div></div>
+    </div>
+    <div class="room-type-option" data-theme="campfire" onclick="selectRoomType('campfire')">
+      <div class="radio-circle"></div>
+      <span class="room-icon">🔥</span>
+      <div><div class="room-name">Campfire</div><div class="room-desc">Cozy storytelling sessions</div></div>
+    </div>
+    <div class="room-type-option" data-theme="neon" onclick="selectRoomType('neon')">
+      <div class="radio-circle"></div>
+      <span class="room-icon">🌟</span>
+      <div><div class="room-name">Neon Games</div><div class="room-desc">Fast-paced action games</div></div>
+    </div>
+  </div>
+  <button onclick="confirmCreateRoomFromSheet()" class="w-full mt-4 py-3 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-semibold">+ Create Room</button>
+</div>
+
+<!-- ===== COIN STORE MODAL ===== -->
+<div id="coinStoreModal" class="fixed inset-0 z-[9999] bg-[#0D0B21] overflow-y-auto hidden p-4">
+  <div class="flex justify-between items-center border-b border-white/10 pb-3 mb-4">
+    <h2 class="text-xl font-black text-white"><i class="fas fa-store text-[#FFD700]"></i> Coin Pack Store</h2>
+    <button onclick="closeCoinStore()" class="text-gray-300 text-xl"><i class="fas fa-times"></i></button>
+  </div>
+  <div class="glass p-4 text-center border border-[#FFD700]/30 mb-4">
+    <p class="text-sm font-bold text-gray-300">🔥 Special Promo Discount Applied!</p>
+    <p class="text-xs text-green-400">Coupon code: NEW81</p>
+  </div>
+  <div class="grid grid-cols-3 gap-2 mb-6">
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(150000)">
+      <p class="font-black text-xs text-[#FFD700]">150000</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹49999</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(100000)">
+      <p class="font-black text-xs text-[#FFD700]">100000</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹35999</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(55000)">
+      <p class="font-black text-xs text-[#FFD700]">55000</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹19999</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(27000)">
+      <p class="font-black text-xs text-[#FFD700]">27000</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹9999</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(10000)">
+      <p class="font-black text-xs text-[#FFD700]">10000</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹3999</p>
+    </div>
+    <div class="glass p-3 text-center border-l-2 border-[#FF2E93] cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(5000)">
+      <p class="font-black text-xs text-[#FF2E93]">POPULAR</p><p class="font-black text-xs text-[#FFD700]">5000</p><p class="text-xs text-green-400 font-bold mt-1">₹1999</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(200)">
+      <p class="font-black text-xs text-[#FFD700]">200</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹119</p>
+    </div>
+    <div class="glass p-3 text-center border-l-2 border-green-500 cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(90)">
+      <p class="font-black text-xs text-green-400">86% OFF</p><p class="font-black text-xs text-[#FFD700]">90</p><p class="text-xs text-green-400 font-bold mt-1">₹9</p>
+    </div>
+    <div class="glass p-3 text-center cursor-pointer hover:border-[#FFD700] transition" onclick="buyCoins(30)">
+      <p class="font-black text-xs text-[#FFD700]">30</p><p class="text-[9px] text-gray-400">Coins</p><p class="text-xs text-green-400 font-bold mt-2">₹25</p>
+    </div>
+  </div>
+  <button onclick="shareAppOnWhatsApp()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-2xl flex items-center justify-center gap-2 mb-4"><i class="fab fa-whatsapp text-xl"></i> Share YARANA App & Earn 50 Coins</button>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- EDIT PROFILE MODAL -->
+<div id="editProfileModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-6">
+    <button onclick="closeModal('editProfileModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Edit your profile</h2>
+  </div>
+  <div class="flex flex-col items-center">
+    <div class="relative w-28 h-28 rounded-full bg-gradient-to-br from-[#FF2E93] to-[#00F0FF] p-[3px] cursor-pointer" onclick="triggerAvatarUpload()">
+      <div class="w-full h-full rounded-full bg-[#0D0B21] flex items-center justify-center text-5xl overflow-hidden">
+        <img id="editAvatarImg" class="profile-avatar-img" src="" alt="avatar" style="display:none;">
+        <span id="editAvatarFallback">😎</span>
+      </div>
+      <div class="absolute bottom-0 right-0 bg-[#00F0FF] rounded-full p-1"><i class="fas fa-camera text-[10px] text-[#0D0B21]"></i></div>
+    </div>
+    <button class="mt-2 text-sm text-green-400 font-semibold" onclick="triggerAvatarUpload()">Change your avatar</button>
+  </div>
+  <div class="mt-6 space-y-4">
+    <div>
+      <label class="text-sm text-gray-400">Real name</label>
+      <div class="flex items-center glass px-4 py-3 rounded-2xl mt-1 border border-white/10">
+        <span class="text-gray-400">Max</span>
+        <i class="fas fa-lock ml-auto text-gray-500"></i>
+      </div>
+      <p class="text-xs text-gray-500 mt-1">We promise to never share your real name with anyone.</p>
+    </div>
+    <div>
+      <label class="text-sm text-gray-400">Nick name</label>
+      <input id="nickNameInput" value="Maxx" class="w-full glass px-4 py-3 rounded-2xl mt-1 border border-white/10 bg-transparent text-white">
+      <p class="text-xs text-gray-500 mt-1">You can change this only once.</p>
+    </div>
+  </div>
+  <div class="flex gap-3 mt-8">
+    <button onclick="closeModal('editProfileModal')" class="flex-1 py-3 glass rounded-2xl text-gray-400 font-semibold">Cancel</button>
+    <button onclick="saveProfile()" class="flex-1 py-3 bg-black rounded-2xl text-white font-semibold border border-white/20">Save</button>
+  </div>
+</div>
+
+<!-- TRANSACTION HISTORY -->
+<div id="transactionHistoryModal" class="modal-full">
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="closeModal('transactionHistoryModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+      <h2 class="text-xl font-bold">Transaction History</h2>
+    </div>
+    <div class="flex items-center gap-3">
+      <i class="fas fa-info-circle text-gray-400"></i>
+      <span class="bg-[#1a1435] px-3 py-1 rounded-full text-xs flex items-center gap-1"><i class="fas fa-coins text-[#FFD700]"></i> <span id="txnCoins">0</span></span>
+    </div>
+  </div>
+  <div class="flex gap-4 border-b border-white/10 pb-2">
+    <span class="font-bold text-[#00F0FF] border-b-2 border-[#00F0FF] pb-2 cursor-pointer" id="txnCoinsTab">Coins</span>
+    <span class="text-gray-400 pb-2 cursor-pointer" id="txnPaymentsTab">Payments</span>
+  </div>
+  <div id="txnCoinsContent" class="mt-4 space-y-2">
+    <div class="glass p-3 rounded-2xl flex justify-between items-center">
+      <div><p class="font-semibold text-sm">1 Yellow Roses gifted in Voice Match</p><p class="text-[10px] text-gray-400">2 min ago</p></div>
+      <span class="text-red-400 text-sm font-bold">-15</span>
+    </div>
+    <div class="glass p-3 rounded-2xl flex justify-between items-center">
+      <div><p class="font-semibold text-sm">Daily reward: 15 coins</p><p class="text-[10px] text-gray-400">Today, 10:30 AM</p></div>
+      <span class="text-green-400 text-sm font-bold">+15</span>
+    </div>
+  </div>
+  <div id="txnPaymentsContent" class="hidden mt-4 flex flex-col items-center justify-center h-40">
+    <i class="fas fa-receipt text-4xl text-gray-600"></i>
+    <p class="text-gray-400 mt-2 font-semibold">No payments history found</p>
+  </div>
+</div>
+
+<!-- BLOCKED CHATS -->
+<div id="blockedChatsModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-4">
+    <button onclick="closeModal('blockedChatsModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Blocked chats</h2>
+  </div>
+  <div class="flex gap-4 border-b border-white/10 pb-2">
+    <span class="font-bold text-red-500 border-b-2 border-red-500 pb-2 cursor-pointer">Blocked by you</span>
+    <span class="text-gray-400 pb-2 cursor-pointer">Blocked you</span>
+  </div>
+  <div class="flex flex-col items-center justify-center h-60">
+    <i class="fas fa-ban text-5xl text-gray-600"></i>
+    <p class="text-gray-400 mt-4 font-semibold">No chats to show</p>
+  </div>
+</div>
+
+<!-- REWARD WALLET -->
+<div id="rewardWalletModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-4">
+    <button onclick="closeModal('rewardWalletModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Reward Wallet</h2>
+  </div>
+  <div class="glass p-6 text-center rounded-3xl">
+    <p class="text-sm text-gray-400">Total Earned</p>
+    <p class="text-3xl font-black text-[#FFD700]">₹0</p>
+  </div>
+  <div class="flex gap-3 mt-4">
+    <button class="flex-1 py-3 bg-green-500 rounded-2xl text-white font-bold opacity-50" disabled>Withdraw</button>
+    <button class="flex-1 py-3 bg-gray-700 rounded-2xl text-white font-bold">Submit KYC Details</button>
+  </div>
+  <p class="text-xs text-gray-400 text-center mt-1">Save 4.9% on TDS after submitting KYC details</p>
+  <p class="text-xs text-gray-500 text-center mt-2">Minimum ₹1 required for withdraw</p>
+  <div class="grid grid-cols-4 gap-2 mt-6 text-center text-[10px] text-gray-400">
+    <div><i class="fas fa-lock text-xl block text-green-400"></i>Secure Payment</div>
+    <div><i class="fas fa-comment text-xl block text-blue-400"></i>Guaranteed Chat</div>
+    <div><i class="fas fa-rupee-sign text-xl block text-[#FFD700]"></i>₹2 Cr+ Payments</div>
+    <div><i class="fas fa-users text-xl block text-[#FF2E93]"></i>50 Lacs+ Users</div>
+  </div>
+  <div class="mt-6">
+    <p class="text-sm font-semibold">Recent Transactions</p>
+    <div class="flex flex-col items-center justify-center h-32">
+      <i class="fas fa-clock text-3xl text-gray-600"></i>
+      <p class="text-gray-400 mt-2 text-sm">No recent transactions</p>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settingsModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-6">
+    <button onclick="closeModal('settingsModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Settings</h2>
+  </div>
+  <div class="space-y-3">
+    <div class="flex items-center gap-3 p-4 glass rounded-2xl cursor-pointer hover:bg-white/5">
+      <i class="fas fa-trash text-red-400 w-6"></i>
+      <span class="font-semibold">Permanently Delete Account</span>
+    </div>
+    <div class="flex items-center gap-3 p-4 glass rounded-2xl cursor-pointer hover:bg-white/5" onclick="logoutUser()">
+      <i class="fas fa-sign-out-alt text-orange-400 w-6"></i>
+      <span class="font-semibold">Logout</span>
+    </div>
+  </div>
+  <button onclick="logoutUser()" class="w-full mt-6 py-3 border-2 border-[#FF2E93] rounded-2xl text-[#FF2E93] font-bold">Logout from all devices</button>
+  <p class="text-center text-xs text-gray-500 mt-8">App Ver. 2.346</p>
+</div>
+
+<!-- APP LANGUAGE BOTTOM SHEET -->
+<div class="sheet-overlay" id="langSheetOverlay" onclick="closeBottomSheet('appLanguageBottomSheet')"></div>
+<div id="appLanguageBottomSheet" class="bottom-sheet">
+  <div class="flex justify-between items-center mb-4">
+    <h3 class="text-xl font-bold">App Language</h3>
+    <button onclick="closeBottomSheet('appLanguageBottomSheet')" class="text-2xl"><i class="fas fa-times"></i></button>
+  </div>
+  <p class="text-sm text-gray-400 mb-4">Select language for the content in app</p>
+  <div class="grid grid-cols-3 gap-3">
+    <div class="lang-card glass p-4 text-center rounded-2xl cursor-pointer border border-white/10 hover:border-[#00F0FF]" data-lang="English">
+      <span class="text-2xl block">E</span>
+      <span class="text-sm font-semibold">English</span>
+    </div>
+    <div class="lang-card glass p-4 text-center rounded-2xl cursor-pointer border border-white/10 hover:border-[#00F0FF]" data-lang="Hindi">
+      <span class="text-2xl block">ह</span>
+      <span class="text-sm font-semibold">हिन्दी</span>
+    </div>
+    <div class="lang-card glass p-4 text-center rounded-2xl cursor-pointer border-2 border-[#00F0FF] bg-[#00F0FF]/10" data-lang="Marathi">
+      <span class="text-2xl block">म <i class="fas fa-check-circle text-[#00F0FF] text-xs"></i></span>
+      <span class="text-sm font-semibold">मराठी</span>
+    </div>
+  </div>
+</div>
+
+<!-- EXPERT APPLY MODAL -->
+<div id="expertApplyModal" class="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm hidden">
+  <div class="glass p-6 w-80 rounded-3xl text-center border border-[#00F0FF]/20">
+    <h2 class="text-xl font-bold">Be FRND Making Expert</h2>
+    <p class="text-sm text-gray-300 mt-2">Join our expert program</p>
+    <button onclick="document.getElementById('expertApplyModal').classList.add('hidden');openModal('expertProgressModal')" class="mt-4 bg-[#00F0FF] text-[#0D0B21] font-bold py-2 px-6 rounded-full shadow-lg shadow-[#00F0FF]/30">Apply</button>
+    <button onclick="document.getElementById('expertApplyModal').classList.add('hidden')" class="mt-2 text-xs text-gray-400 block">Close</button>
+  </div>
+</div>
+
+<!-- EXPERT PROGRESS MODAL -->
+<div id="expertProgressModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-6">
+    <button onclick="closeModal('expertProgressModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Expert Progress</h2>
+  </div>
+  <div class="space-y-4">
+    <div class="glass p-4 rounded-2xl flex items-center justify-between">
+      <div><p class="font-semibold">Step 1: Complete 5 Dates inside FRND Making Rooms</p><p class="text-xs text-gray-400">Already Played 0</p></div>
+      <span class="text-[#FFD700] text-xs bg-[#FFD700]/20 px-3 py-1 rounded-full">Pending</span>
+    </div>
+    <div class="glass p-4 rounded-2xl flex items-center justify-between">
+      <div><p class="font-semibold">Step 2: Who is FRND Making Expert?</p></div>
+      <span class="text-[#FFD700] text-xs bg-[#FFD700]/20 px-3 py-1 rounded-full">Pending</span>
+    </div>
+    <div class="glass p-4 rounded-2xl flex items-center justify-between">
+      <div><p class="font-semibold">Step 3: How to host a show?</p></div>
+      <span class="text-[#FFD700] text-xs bg-[#FFD700]/20 px-3 py-1 rounded-full">Pending</span>
+    </div>
+    <div class="glass p-4 rounded-2xl flex items-center justify-between">
+      <div><p class="font-semibold">Step 4: Submit voice</p></div>
+      <span class="text-[#FFD700] text-xs bg-[#FFD700]/20 px-3 py-1 rounded-full">Pending</span>
+    </div>
+  </div>
+</div>
+
+<!-- FOLLOWING LIST MODAL -->
+<div id="followingListModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-4">
+    <button onclick="closeModal('followingListModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Following</h2>
+  </div>
+  <div id="followingListContainer" class="space-y-3"></div>
+</div>
+
+<!-- FOLLOWERS MODAL -->
+<div id="followersModal" class="modal-full">
+  <div class="flex items-center gap-3 mb-4">
+    <button onclick="closeModal('followersModal')" class="text-2xl"><i class="fas fa-arrow-left"></i></button>
+    <h2 class="text-xl font-bold">Followers</h2>
+  </div>
+  <div class="flex flex-col items-center justify-center h-64">
+    <i class="fas fa-users text-5xl text-gray-600"></i>
+    <p class="text-gray-400 mt-4 font-semibold text-center">No followers yet!<br>Share your profile to get discovered.</p>
+  </div>
+</div>
+
+<!-- ACTIVE VOICE ROOM -->
+<div id="activeVoiceRoom" class="modal-full">
+  <div id="roomThemeContainer" class="relative min-h-[80vh] rounded-3xl overflow-hidden">
+    <div id="ludoTheme" class="ludo-bg absolute inset-0 p-4" style="display:none;">
+      <div class="ludo-grid"></div>
+      <div class="relative z-10">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-2"><i class="fas fa-chess-board text-[#FFD700]"></i><h2 class="text-lg font-bold">Ludo Match Room</h2></div>
+          <button onclick="closeModal('activeVoiceRoom')" class="text-red-400 text-sm font-bold"><i class="fas fa-times-circle"></i> Exit</button>
+        </div>
+        <div class="glass p-4 rounded-2xl flex items-center gap-3 bg-black/40">
+          <div class="w-12 h-12 rounded-full bg-[#FF2E93]/30 flex items-center justify-center text-xl">🎸</div>
+          <div><p class="font-bold">SHUBHAM <i class="fas fa-check-circle text-[#00F0FF] text-xs"></i></p><p class="text-xs text-gray-400">Host</p></div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mt-3">
+          <div class="glass p-3 rounded-2xl seat-active text-center bg-black/40"><p class="font-bold">Teju</p><p class="text-xs text-green-400">Following</p></div>
+          <div class="glass p-3 rounded-2xl seat-active text-center bg-black/40"><p class="font-bold">Prasad</p><p class="text-xs text-gray-400">Listener</p></div>
+        </div>
+        <div class="glass p-3 rounded-2xl mt-3 bg-black/40">
+          <p class="text-xs font-semibold text-gray-400">🏆 Ranking</p>
+          <div class="flex justify-between text-xs"><span>1. Teju</span><span>❤️ 12</span></div>
+          <div class="flex justify-between text-xs"><span>2. Prasad</span><span>❤️ 8</span></div>
+          <div class="flex justify-between text-xs"><span>3. You</span><span>❤️ 5</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="campfireTheme" class="campfire-bg absolute inset-0 p-4" style="display:none;">
+      <div class="campfire-glow"></div>
+      <div class="relative z-10">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-bold">FRND Making Rooms</h2>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="text-[#FFD700]">👥 318</span>
+            <span class="text-[#FFD700]">🎁 10</span>
+          </div>
+        </div>
+        <div class="flex gap-2 text-xs mb-3">
+          <span class="bg-[#FF2E93]/30 px-2 py-0.5 rounded-full">FRND RJ</span>
+          <span class="bg-[#00F0FF]/30 px-2 py-0.5 rounded-full">Help</span>
+          <span class="bg-[#FFD700]/30 px-2 py-0.5 rounded-full">GAME OVER !!!</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="glass p-3 rounded-2xl seat-active text-center bg-black/40">
+            <p class="font-bold">priya</p>
+            <p class="text-xs text-green-400">🟢 Active</p>
+          </div>
+          <div class="glass p-3 rounded-2xl text-center bg-black/40 border border-dashed border-gray-500">
+            <p class="text-2xl">🪑</p>
+            <p class="text-xs text-gray-400">RJ will add you</p>
+          </div>
+        </div>
+        <div class="mt-3 glass p-3 rounded-2xl bg-black/40 max-h-32 overflow-y-auto">
+          <p class="text-xs font-semibold text-gray-400 mb-1">📋 Waitlist</p>
+          <div id="waitlistContainer" class="space-y-1 text-xs">
+            <div class="flex justify-between text-gray-300"><span>sarthu</span><span class="text-green-400">Gifted FRND Heart</span></div>
+            <div class="flex justify-between text-gray-300"><span>sarthu</span><span class="text-blue-400">Joined waitlist</span></div>
+            <div class="flex justify-between text-gray-300"><span>Diren</span><span class="text-green-400">Gifted FRND Heart</span></div>
+            <div class="flex justify-between text-gray-300"><span>Diren</span><span class="text-blue-400">Joined waitlist</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="neonTheme" class="neon-game-bg absolute inset-0 p-4" style="display:none;">
+      <div class="relative z-10 flex flex-col h-full">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-bold text-[#FFD700]">Play Games Now 🎮</h2>
+          <button onclick="closeModal('activeVoiceRoom')" class="text-red-400 text-sm font-bold"><i class="fas fa-times-circle"></i> Exit</button>
+        </div>
+        <div class="flex-1 flex flex-col items-center justify-center">
+          <div class="neon-controller">🎮</div>
+          <p class="text-2xl font-black text-[#FFD700] neon-text mt-2">PLAY GAMES NOW</p>
+          <div class="flex gap-4 mt-4 text-xs text-gray-400">
+            <span class="bg-[#FF2E93]/20 px-3 py-1 rounded-full">🎯 Live</span>
+            <span class="bg-[#00F0FF]/20 px-3 py-1 rounded-full">👥 12 Players</span>
+          </div>
+        </div>
+        <div class="glass p-3 rounded-2xl bg-black/40 mt-2">
+          <div class="flex justify-between text-xs"><span>Host: SHUBHAM</span><span><i class="fas fa-check-circle text-[#00F0FF]"></i> Verified</span></div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="glass p-2 rounded-xl text-center bg-black/30"><p class="font-bold text-sm">Teju</p><p class="text-[10px] text-green-400">🟢 Playing</p></div>
+            <div class="glass p-2 rounded-xl text-center bg-black/30"><p class="font-bold text-sm">Prasad</p><p class="text-[10px] text-gray-400">⏳ Waiting</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent z-20">
+      <p class="text-xs font-semibold text-gray-400 mb-2">🎁 Premium Gifts</p>
+      <div class="grid grid-cols-4 gap-2">
+        <div class="gift-item glass p-2 text-center rounded-xl bg-black/40" onclick="sendGift('Maggi', 19)"><span class="text-xl">🍜</span><p class="text-[10px]">Maggi 19</p></div>
+        <div class="gift-item glass p-2 text-center rounded-xl bg-black/40" onclick="sendGift('Heart', 5)"><span class="text-xl">❤️</span><p class="text-[10px]">Heart 5</p></div>
+        <div class="gift-item glass p-2 text-center rounded-xl bg-black/40" onclick="sendGift('Tea', 19)"><span class="text-xl">☕</span><p class="text-[10px]">Tea 19</p></div>
+        <div class="gift-item glass p-2 text-center rounded-xl bg-black/40" onclick="sendGift('Rose', 49)"><span class="text-xl">🌹</span><p class="text-[10px]">Rose 49</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COUNTDOWN OVERLAY -->
+<div id="countdownOverlay">
+  <div class="countdown-bg-wave"></div>
+  <div class="countdown-number" id="countdownNumber">3</div>
+</div>
+
+<!-- HIDDEN FILE INPUT FOR AVATAR UPLOAD -->
+<input type="file" id="avatarUploadInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
+
+<!-- CUSTOM TOAST -->
+<div id="customToast" class="custom-toast info">
+  <span id="toastIcon"><i class="fas fa-info-circle"></i></span>
+  <span id="toastMessage">Notification</span>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="max-w-md mx-auto relative h-screen overflow-y-auto bg-[#0D0B21] pb-24 px-4">
+
+  <!-- ONBOARDING -->
+  <div id="onboarding" class="screen active flex flex-col h-screen justify-center">
+    <div id="slideContainer" class="relative w-full h-[480px] glass rounded-3xl p-6 flex flex-col items-center justify-center text-center transition-all overflow-y-auto">
+      
+      <!-- SLIDE 0: Voice chat shows -->
+      <div class="slide-item" data-index="0">
+        <div class="w-24 h-24 mx-auto rounded-full bg-[#6D39FF] flex items-center justify-center text-5xl">🎤</div>
+        <h2 class="text-3xl font-bold mt-4">Voice chat shows</h2>
+        <p class="text-gray-300 mt-2">Max helps to find best YARANA partners</p>
+      </div>
+      
+      <!-- SLIDE 1: Earphones on! -->
+      <div class="slide-item hidden" data-index="1">
+        <div class="w-24 h-24 mx-auto rounded-full bg-[#1AA3FF] flex items-center justify-center text-5xl">🎧</div>
+        <h2 class="text-3xl font-bold mt-4">Earphones on!</h2>
+        <p class="text-gray-300 mt-2">No real pics, Only voice & Avatar</p>
+      </div>
+      
+      <!-- SLIDE 2: 100% safe and secure -->
+      <div class="slide-item hidden" data-index="2">
+        <div class="w-24 h-24 mx-auto rounded-full bg-[#FF2E93] flex items-center justify-center text-5xl">🛡️</div>
+        <h2 class="text-3xl font-bold mt-4">100% safe and secure</h2>
+        <p class="text-gray-300 mt-2">Zero fake profiles</p>
+      </div>
+
+      <!-- SLIDE 3: Set Profile -->
+      <div class="slide-item hidden" data-index="3" style="width:100%; text-align:left;">
+        <h2 class="text-2xl font-bold text-center">Set Profile</h2>
+        <p class="text-xs text-gray-400 text-center mb-3">Let's get to know you</p>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="onboarding-form-label">Nick-name</label>
+            <input id="onboardingNickName" placeholder="Enter your nickname" class="onboarding-form-input">
+            <div id="nicknameStatus" class="text-xs mt-1 hidden"></div>
+          </div>
+          
+          <div>
+            <label class="onboarding-form-label">Who are you?</label>
+            <div class="gender-select-trigger" onclick="openGenderSheet()">
+              <span id="genderDisplayText">Select Gender</span>
+              <span id="genderDisplayBadge" class="badge hidden">✔️</span>
+            </div>
+          </div>
+          
+          <div>
+            <label class="onboarding-form-label">Date of Birth 🎂</label>
+            <div class="gender-select-trigger" onclick="openCalendarSheet()">
+              <span id="dobDisplayText">Select Date</span>
+              <span id="dobDisplayBadge" class="badge hidden">📅</span>
+            </div>
+          </div>
+          
+          <div>
+            <a href="#" class="text-xs text-[#00F0FF] hover:underline">I have referral code</a>
+          </div>
+        </div>
+        
+        <button id="onboardingSubmitBtn" onclick="submitOnboardingProfile()" class="w-full mt-4 py-3 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition" disabled>Submit</button>
+        <div id="onboardingProfileError" class="text-xs text-red-400 mt-2 hidden text-center">⚠️ Please fill in all fields</div>
+      </div>
+
+      <!-- SLIDE 4: Select Language -->
+      <div class="slide-item hidden" data-index="4" style="width:100%;">
+        <h2 class="text-2xl font-bold text-center">Select Your Language</h2>
+        <p class="text-xs text-gray-400 text-center mb-3">Choose your preferred language</p>
+        <div class="grid grid-cols-3 gap-2" id="languageGrid">
+          <div class="lang-grid-card" data-lang="Hindi" onclick="selectLanguage('Hindi')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Hindi</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Telugu" onclick="selectLanguage('Telugu')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Telugu</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Tamil" onclick="selectLanguage('Tamil')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Tamil</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Malayalam" onclick="selectLanguage('Malayalam')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Malayalam</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Kannada" onclick="selectLanguage('Kannada')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Kannada</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Punjabi" onclick="selectLanguage('Punjabi')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Punjabi</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Marathi" onclick="selectLanguage('Marathi')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Marathi</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Gujarati" onclick="selectLanguage('Gujarati')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Gujarati</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Oriya" onclick="selectLanguage('Oriya')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Oriya</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Bengali" onclick="selectLanguage('Bengali')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Bengali</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Assamese" onclick="selectLanguage('Assamese')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Assamese</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+          <div class="lang-grid-card" data-lang="Bhojpuri" onclick="selectLanguage('Bhojpuri')"><span class="lang-emoji">🇮🇳</span><span class="lang-name">Bhojpuri</span><div class="check-badge"><i class="fas fa-check"></i></div></div>
+        </div>
+        <div class="mt-3 text-xs text-yellow-400 text-center">⚠️ The language cannot be changed later on</div>
+        <button id="onboardingLangSaveBtn" onclick="saveLanguage()" class="w-full mt-3 py-3 rounded-full bg-gray-600 text-gray-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition" disabled>Save</button>
+      </div>
+
+      <!-- SLIDE 5: Safety Declaration -->
+      <div class="slide-item hidden" data-index="5" style="width:100%;">
+        <div class="text-6xl text-yellow-400 mb-3">⚠️</div>
+        <h2 class="text-2xl font-bold text-center">Declaration</h2>
+        <div class="flex items-start gap-3 mt-4 text-left">
+          <input type="checkbox" id="safetyCheckbox" onchange="toggleSafetySubmit()" class="mt-1 w-4 h-4 accent-[#FF2E93]">
+          <label for="safetyCheckbox" class="text-sm text-gray-300">If I misbehave with any user, I might get permanently blocked from YARANA App.</label>
+        </div>
+        <button id="safetySubmitBtn" onclick="submitSafetyDeclaration()" class="w-full mt-4 py-3 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition" disabled>Submit</button>
+      </div>
+
+      <!-- SLIDE 6: Verification (Google OAuth Only with Husky Design) -->
+      <div class="slide-item hidden" data-index="6" style="width:100%;">
+        <!-- Husky SVG Illustration -->
+        <div class="husky-container">
+          <svg viewBox="0 0 200 160" xmlns="http://www.w3.org/2000/svg">
+            <!-- Body -->
+            <ellipse cx="100" cy="120" rx="50" ry="30" fill="#c0a080" class="husky-body"/>
+            <ellipse cx="100" cy="125" rx="40" ry="20" fill="#8b7355" class="husky-dark"/>
+            <!-- Head -->
+            <ellipse cx="100" cy="80" rx="45" ry="40" fill="#c0a080" class="husky-body"/>
+            <!-- Left ear -->
+            <polygon points="65,50 75,20 85,45" fill="#8b7355" class="husky-dark"/>
+            <!-- Right ear -->
+            <polygon points="135,50 125,20 115,45" fill="#8b7355" class="husky-dark"/>
+            <!-- Face mask -->
+            <ellipse cx="100" cy="95" rx="30" ry="20" fill="#f5f0e8"/>
+            <!-- Left eye white -->
+            <ellipse cx="80" cy="75" rx="12" ry="10" fill="white" class="eye-whites"/>
+            <!-- Left pupil -->
+            <ellipse cx="80" cy="77" rx="6" ry="7" fill="#1a1a2e" class="pupil" id="leftPupil"/>
+            <!-- Right eye white -->
+            <ellipse cx="120" cy="75" rx="12" ry="10" fill="white" class="eye-whites"/>
+            <!-- Right pupil -->
+            <ellipse cx="120" cy="77" rx="6" ry="7" fill="#1a1a2e" class="pupil" id="rightPupil"/>
+            <!-- Nose -->
+            <ellipse cx="100" cy="90" rx="6" ry="4" fill="#1a1a2e" class="husky-nose"/>
+            <!-- Mouth -->
+            <path d="M95 95 Q100 100 105 95" stroke="#1a1a2e" stroke-width="1.5" fill="none"/>
+          </svg>
+        </div>
+
+        <!-- Den Card -->
+        <div class="glass p-6 rounded-3xl border border-white/5 shadow-xl">
+          <h3 class="text-xl font-bold text-white text-center">Den</h3>
+          <p class="text-xs text-gray-400 text-center mb-4">Instant secure access to your social circle.</p>
+          
+          <!-- Google Login Button -->
+          <button id="googleLoginBtn" onmouseenter="moveHuskyEyes('down')" onmouseleave="moveHuskyEyes('center')" onclick="handleGoogleLogin()" class="w-full py-3.5 rounded-full bg-gradient-to-r from-[#4285F4] to-[#34A853] text-white font-bold text-sm flex items-center justify-center gap-3 shadow-lg shadow-[#4285F4]/20 transition-transform hover:scale-[1.02]">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+            Google Login
+          </button>
+        </div>
+
+        <div id="verificationStatus" class="mt-2 text-xs text-[#FFD700] text-center"></div>
+        <button id="onboardingFinishBtn" onclick="finishOnboarding()" class="w-full mt-4 py-3.5 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-bold hidden shadow-lg shadow-[#FF2E93]/20">Let's Go 🚀</button>
+      </div>
+    </div>
+    
+    <div class="flex justify-center gap-2 mt-4">
+      <div class="onboarding-dot active" data-dot="0"></div>
+      <div class="onboarding-dot" data-dot="1"></div>
+      <div class="onboarding-dot" data-dot="2"></div>
+      <div class="onboarding-dot" data-dot="3"></div>
+      <div class="onboarding-dot" data-dot="4"></div>
+      <div class="onboarding-dot" data-dot="5"></div>
+      <div class="onboarding-dot" data-dot="6"></div>
+    </div>
+    <button id="onboardingNextBtn" class="mt-4 glass px-8 py-3 rounded-full text-white font-semibold border border-[#00F0FF]/30 hover:border-[#FF2E93] transition-all">Next</button>
+  </div>
+
+  <!-- WELCOME DASHBOARD -->
+  <div id="welcome" class="screen hidden flex flex-col h-screen justify-center pt-4">
+    <div class="text-center">
+      <h2 class="text-2xl font-bold text-white">Welcome <span id="welcomeUserName">Max</span>!</h2>
+      <p class="text-sm text-gray-400 mt-1">Build Confidence. Start free training call with an Expert.</p>
+    </div>
+    
+    <div class="expert-avatar-cluster mt-6">
+      <div class="avatar-item">NP <span class="star">⭐4.2</span></div>
+      <div class="avatar-item">AM <span class="star">⭐4.7</span></div>
+      <div class="avatar-item">RB <span class="star">⭐4.2</span></div>
+      <div class="avatar-item">SK <span class="star">⭐4.5</span></div>
+    </div>
+    
+    <div class="glass p-6 rounded-3xl mt-4 text-center border border-green-500/20">
+      <p class="text-sm text-gray-300">🎁 5 mins Voice Call <span class="text-green-400 font-semibold">[FREE]</span></p>
+      <button onclick="startExpertCall()" class="mt-3 px-8 py-3 rounded-full bg-green-500 text-white font-bold shadow-lg shadow-green-500/30 hover:shadow-green-500/50 transition">📞 Audio Call</button>
+    </div>
+    
+    <div class="flex gap-3 mt-6">
+      <button onclick="skipWelcome()" class="flex-1 py-3 glass rounded-2xl text-gray-400 font-semibold">Skip</button>
+      <button onclick="skipWelcome()" class="flex-1 py-3 bg-black rounded-2xl text-white font-semibold border border-white/20">Later</button>
+    </div>
+  </div>
+
+  <!-- HOME -->
+  <div id="home" class="screen hidden pt-4">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-2" onclick="toggleDrawer()">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF2E93] to-[#00F0FF] p-[2px]">
+          <div class="w-full h-full rounded-full bg-[#0D0B21] flex items-center justify-center text-sm overflow-hidden">
+            <img id="homeAvatarImg" class="profile-avatar-img" src="" alt="avatar" style="display:none;">
+            <span id="homeAvatarFallback">😎</span>
+          </div>
+        </div>
+        <span class="font-semibold" id="homeUserName">Max</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span onclick="openCoinStore()" class="bg-[#1a1435] px-3 py-1 rounded-full text-xs flex items-center gap-1 cursor-pointer"><i class="fas fa-coins text-[#FFD700]"></i> <span id="homeCoins">0</span></span>
+        <i onclick="openCoinStore()" class="fas fa-store text-xl text-[#FFD700] cursor-pointer"></i>
+        <button onclick="document.getElementById('expertApplyModal').classList.remove('hidden')" class="text-xs bg-[#FF2E93] text-white px-2 py-1 rounded-full font-bold">+ Expert</button>
+      </div>
+    </div>
+
+    <div id="storiesContainer" class="flex gap-3 overflow-x-auto py-3 scrollbar-hide"></div>
+
+    <div id="dailyCoinsBanner" class="glass mt-2 p-4 rounded-2xl border-l-4 border-[#FFD700]">
+      <div class="flex justify-between items-center">
+        <div>
+          <p class="font-bold text-[#FFD700]">🎁 Daily Free Coins</p>
+          <p id="dailyCoinsStatus" class="text-xs text-gray-300">15 coins waiting for you!</p>
+        </div>
+        <button id="claimDailyCoinsBtn" onclick="claimDailyCoins()" class="bg-[#FFD700] text-[#0D0B21] font-bold px-4 py-1.5 rounded-full text-xs">Claim</button>
+      </div>
+      <div id="dailyCoinsTimer" class="text-[10px] text-gray-400 mt-1">Next reward in --:--:--</div>
+    </div>
+
+    <div class="mt-4 relative">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-semibold text-gray-300">👥 FRND Making Rooms</p>
+        <div class="tooltip-yellow text-[10px]">👈 Our experts will make your FRND in 5 min</div>
+      </div>
+      <div id="homeRoomsContainer" class="flex gap-3 overflow-x-auto py-2"></div>
+    </div>
+    <div class="mt-4">
+      <p class="text-sm font-semibold text-gray-300">📞 Connect Now</p>
+      <div id="connectNowContainer" class="flex gap-3 overflow-x-auto py-2"></div>
+    </div>
+  </div>
+
+  <!-- CONNECT ROOMS -->
+  <div id="rooms" class="screen hidden pt-4">
+    <div class="flex justify-between items-center">
+      <h2 class="font-bold text-lg">Connect Rooms</h2>
+    </div>
+    <div class="flex gap-2 overflow-x-auto text-xs pb-2 mt-2">
+      <span class="px-3 py-1 glass rounded-full border border-[#FF2E93]/40">#Maharashtra</span>
+      <span class="px-3 py-1 glass rounded-full">#Love</span>
+      <span class="px-3 py-1 glass rounded-full">#Breakup</span>
+      <span class="px-3 py-1 glass rounded-full">#Foodie</span>
+    </div>
+    <div class="relative w-full h-64 glass rounded-3xl overflow-hidden mt-2" id="bubbleCanvas"></div>
+    <div class="glass mt-4 p-4 rounded-2xl flex justify-around text-[10px] text-center">
+      <button onclick="startRandomMatching()" class="flex flex-col items-center"><i class="fas fa-microphone text-[#FF2E93] text-xl mb-1"></i> Audio <span class="text-[#FFD700]">10/min</span></button>
+      <button onclick="startRandomMatching()" class="flex flex-col items-center"><i class="fas fa-video text-[#00F0FF] text-xl mb-1"></i> Video <span class="text-[#FFD700]">60/min</span></button>
+      <button onclick="openChatFromRoom()" class="flex flex-col items-center"><i class="fas fa-comment text-green-400 text-xl mb-1"></i> Chat <span class="text-[#FFD700]">10/4msg</span></button>
+    </div>
+  </div>
+
+  <!-- FRND TAB -->
+  <div id="frnd" class="screen hidden pt-4">
+    <div class="relative overflow-hidden rounded-2xl p-5 mb-4" style="background: linear-gradient(135deg, #6D39FF, #A855F7);">
+      <div class="absolute right-0 top-0 opacity-20 text-6xl">🎸</div>
+      <div class="absolute left-0 bottom-0 opacity-10 text-4xl">🎵</div>
+      <div class="relative z-10">
+        <div class="flex justify-between items-start">
+          <div>
+            <h2 class="text-2xl font-black text-white">FRND Making Rooms</h2>
+            <p class="text-sm text-white/80 mt-1">Experts will make your FRND</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white"><i class="fas fa-play text-xs"></i></button>
+            <button onclick="openCreateRoomSheet()" class="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg shadow-green-500/30"><i class="fas fa-plus text-xs"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="frndRoomsContainer" class="grid grid-cols-1 gap-3"></div>
+  </div>
+
+  <!-- CHATS -->
+  <div id="inbox" class="screen hidden pt-4">
+    <div class="flex gap-4 border-b border-white/10 pb-2 mb-3 text-sm">
+      <span class="font-bold text-[#00F0FF] border-b-2 border-[#00F0FF] pb-2 cursor-pointer" id="chatsTab">Chat</span>
+      <span class="text-gray-400 pb-2 cursor-pointer" id="availableTab">Available</span>
+    </div>
+    <div class="flex gap-2 mb-4 text-xs">
+      <span class="px-3 py-1 bg-[#FF2E93] text-white rounded-full font-bold">All</span>
+      <span class="px-3 py-1 glass rounded-full text-gray-300">Your turn</span>
+      <span class="px-3 py-1 glass rounded-full text-gray-300">Sent</span>
+    </div>
+    <div id="activeChatList" class="space-y-2">
+      <div class="glass p-3 rounded-2xl flex justify-between items-center cursor-pointer" onclick="openChatWindow('Sonal')"><div><span class="font-bold">Sonal</span> <span class="text-xs text-gray-400">Marathi</span></div><i class="fas fa-chevron-right"></i></div>
+      <div class="glass p-3 rounded-2xl flex justify-between items-center cursor-pointer" onclick="openChatWindow('Shruti')"><div><span class="font-bold">Shruti</span> <span class="text-xs text-gray-400">Hindi</span></div><i class="fas fa-chevron-right"></i></div>
+      <div class="glass p-3 rounded-2xl flex justify-between items-center cursor-pointer" onclick="openChatWindow('Priya')"><div><span class="font-bold">Priya</span> <span class="text-xs text-gray-400">Tamil</span></div><i class="fas fa-chevron-right"></i></div>
+    </div>
+    <div id="emptyState" class="hidden flex flex-col items-center justify-center h-64">
+      <i class="fas fa-search text-5xl text-gray-500"></i>
+      <p class="text-gray-400 font-bold mt-4">No users available. Check back later!</p>
+    </div>
+  </div>
+
+  <!-- RECENTS -->
+  <div id="recents" class="screen hidden pt-4">
+    <div class="flex gap-4 border-b border-white/10 pb-2">
+      <span class="font-bold text-[#00F0FF] border-b-2 border-[#00F0FF] pb-2 cursor-pointer" id="recentsAllTab">All</span>
+      <span class="text-gray-400 pb-2 cursor-pointer" id="recentsMissedTab">Missed</span>
+    </div>
+    <div id="recentsAllContent">
+      <p class="text-xs text-gray-400 mt-3">Today</p>
+      <div class="glass p-3 rounded-2xl mt-1 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-full bg-[#FF2E93]/30 flex items-center justify-center text-sm">😊</span>
+          <div><p class="font-bold">sakku</p><p class="text-[10px] text-gray-400">Hindi · <span class="text-green-400">🟢 Online</span></p><p class="text-[10px] text-gray-500">22 Jul, 04:05 PM</p></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="toggleFollow('sakku')" class="follow-btn" data-user="sakku"><i class="fas fa-plus"></i></button>
+          <button onclick="startCall('sakku')" class="bg-[#00F0FF] text-[#0D0B21] font-bold text-xs px-3 py-1.5 rounded-full">Call</button>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-3">Yesterday</p>
+      <div class="glass p-3 rounded-2xl mt-1 flex items-center justify-between opacity-60">
+        <div class="flex items-center gap-3"><span class="w-10 h-10 rounded-full bg-gray-600/30 flex items-center justify-center text-sm">😊</span><div><p class="font-bold">Lisha</p><p class="text-[10px] text-gray-400">Hindi · <span class="text-gray-400">⚪ Offline</span></p><p class="text-[10px] text-gray-500">21 Jul, 03:45 PM</p></div></div>
+        <div class="flex items-center gap-2">
+          <button onclick="toggleFollow('Lisha')" class="follow-btn" data-user="Lisha"><i class="fas fa-plus"></i></button>
+          <button class="bg-gray-700 text-xs px-3 py-1.5 rounded-full text-gray-400" disabled>Offline</button>
+        </div>
+      </div>
+      <div class="glass p-3 rounded-2xl mt-1 flex items-center justify-between opacity-60">
+        <div class="flex items-center gap-3"><span class="w-10 h-10 rounded-full bg-gray-600/30 flex items-center justify-center text-sm">😊</span><div><p class="font-bold">singh</p><p class="text-[10px] text-gray-400">Hindi · <span class="text-gray-400">⚪ Offline</span></p><p class="text-[10px] text-gray-500">21 Jul, 03:44 PM</p></div></div>
+        <div class="flex items-center gap-2">
+          <button onclick="toggleFollow('singh')" class="follow-btn" data-user="singh"><i class="fas fa-plus"></i></button>
+          <button class="bg-gray-700 text-xs px-3 py-1.5 rounded-full text-gray-400" disabled>Offline</button>
+        </div>
+      </div>
+      <p class="text-xs text-gray-400 mt-3">20 July</p>
+      <div class="glass p-3 rounded-2xl mt-1 flex items-center justify-between opacity-60">
+        <div class="flex items-center gap-3"><span class="w-10 h-10 rounded-full bg-gray-600/30 flex items-center justify-center text-sm">😊</span><div><p class="font-bold">rubina halge</p><p class="text-[10px] text-gray-400">Hindi · <span class="text-gray-400">⚪ Offline</span></p><p class="text-[10px] text-gray-500">20 Jul, 03:42 PM</p></div></div>
+        <div class="flex items-center gap-2">
+          <button onclick="toggleFollow('rubina halge')" class="follow-btn" data-user="rubina halge"><i class="fas fa-plus"></i></button>
+          <button class="bg-gray-700 text-xs px-3 py-1.5 rounded-full text-gray-400" disabled>Offline</button>
+        </div>
+      </div>
+      <div id="smartToast" class="toast-notification hidden-toast glass p-3 rounded-2xl flex items-center gap-3 bg-black/60 backdrop-blur-xl border border-white/10">
+        <div class="w-10 h-10 rounded-full bg-[#FF2E93] flex items-center justify-center text-white font-bold text-xs">frnd</div>
+        <div class="flex-1">
+          <p class="text-xs font-semibold">🎉 <span id="toastUserName" class="text-[#FFD700]">vaishnavi</span> is now <span class="text-green-400">🟢 Online</span>!</p>
+        </div>
+        <button onclick="startCall(document.getElementById('toastUserName').textContent)" class="text-[#00F0FF] text-xs font-bold">Call Now</button>
+      </div>
+    </div>
+    <div id="recentsMissedContent" class="hidden flex flex-col items-center justify-center h-80">
+      <div class="missed-empty text-center">
+        <svg viewBox="0 0 200 200" class="mx-auto">
+          <rect x="40" y="80" width="120" height="70" rx="12" fill="#2a1f4a" stroke="#4a3a6a" stroke-width="3"/>
+          <rect x="60" y="60" width="80" height="25" rx="6" fill="#1a1435" stroke="#4a3a6a" stroke-width="2"/>
+          <circle cx="100" cy="150" r="8" fill="#4a3a6a"/>
+          <circle cx="100" cy="140" r="4" fill="#FFD700" opacity="0.6"/>
+          <text x="70" y="160" font-size="20" fill="#FFD700" opacity="0.3" font-weight="bold">Z z z</text>
+          <text x="110" y="170" font-size="16" fill="#FFD700" opacity="0.2" font-weight="bold">z</text>
+          <path d="M80 50 Q100 30 120 50" stroke="#FFD700" stroke-width="2" fill="none" opacity="0.3"/>
+        </svg>
+      </div>
+      <p class="text-gray-400 font-bold mt-4 text-center">No missed calls yet!<br>Stay Connected</p>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div id="profile" class="screen hidden pt-4">
+    <div class="flex justify-between items-center mb-3">
+      <button onclick="navigateTo('home')" class="text-xl"><i class="fas fa-arrow-left"></i></button>
+      <div class="flex items-center gap-3">
+        <span class="text-xs bg-[#1a1435] px-2 py-1 rounded-full flex items-center gap-1"><i class="fas fa-wallet text-[#FFD700]"></i> ₹0</span>
+        <span class="text-xs bg-[#1a1435] px-2 py-1 rounded-full flex items-center gap-1"><i class="fas fa-coins text-[#FFD700]"></i> <span id="profileCoins">0</span></span>
+        <button onclick="toggleDrawer()" class="text-xl"><i class="fas fa-bars"></i></button>
+      </div>
+    </div>
+    <div class="flex items-center gap-4">
+      <div class="relative cursor-pointer" onclick="triggerAvatarUpload()">
+        <div class="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF2E93] to-[#00F0FF] p-[2px]">
+          <div class="w-full h-full rounded-full bg-[#0D0B21] flex items-center justify-center text-3xl overflow-hidden">
+            <img id="profileAvatarImg" class="profile-avatar-img" src="" alt="avatar" style="display:none;">
+            <span id="profileAvatarFallback">😎</span>
+          </div>
+        </div>
+        <div class="absolute -bottom-1 -right-1 bg-[#0D0B21] rounded-full p-0.5"><i class="fas fa-camera text-[10px] text-[#00F0FF]"></i></div>
+      </div>
+      <div>
+        <div class="flex items-center gap-2"><span class="text-xl font-bold" id="profileDisplayName">Maxx</span> <i class="fas fa-check-circle text-[#00F0FF] text-sm"></i></div>
+        <p class="text-xs text-gray-400" id="profileLocationAge">Maharashtra · 18-21</p>
+        <div class="flex gap-4 mt-1 text-xs">
+          <span onclick="openModal('followersModal')" class="text-gray-300 cursor-pointer hover:text-[#00F0FF]"><span id="followersCount">0</span> <span class="text-gray-500">Followers</span></span>
+          <span onclick="openFollowingModal()" class="text-gray-300 cursor-pointer hover:text-[#00F0FF]"><span id="followingCount">2</span> <span class="text-gray-500">Following</span></span>
+        </div>
+      </div>
+    </div>
+    <div class="glass p-4 rounded-2xl mt-4 flex items-center justify-between cursor-pointer" onclick="openBottomSheet('appLanguageBottomSheet')">
+      <span><i class="fas fa-globe text-cyan-300 mr-2"></i> App Language: <span id="profileLanguageDisplay">English</span></span>
+      <i class="fas fa-chevron-right text-gray-400"></i>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div id="bottomNav" class="bottom-nav fixed bottom-0 left-0 right-0 max-w-md mx-auto flex justify-around py-3 text-xs text-gray-400 hidden">
+    <div class="nav-item" data-nav="home"><i class="fas fa-home text-lg block"></i><span>FRND</span></div>
+    <div class="nav-item" data-nav="rooms"><i class="fas fa-phone-alt text-lg block"></i><span>Connect</span></div>
+    <div class="nav-item" data-nav="frnd"><i class="fas fa-users-cog text-lg block"></i><span>FRND</span></div>
+    <div class="nav-item" data-nav="inbox"><i class="fas fa-comment-alt text-lg block"></i><span>Chats</span></div>
+    <div class="nav-item active" data-nav="recents"><i class="fas fa-history text-lg block"></i><span>Recents</span></div>
+    <div class="nav-item" data-nav="profile"><i class="fas fa-user text-lg block"></i><span>Profile</span></div>
+  </div>
+
+  <!-- CHAT MODAL -->
+  <div id="chatModal" class="fixed inset-0 z-[999] bg-[#0D0B21]/90 backdrop-blur-lg hidden flex flex-col">
+    <div class="flex justify-between p-3 border-b border-white/10"><span class="font-bold" id="chatPartnerName">Sonal</span><button onclick="closeChatWindow()"><i class="fas fa-times"></i></button></div>
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-3 flex flex-col gap-1"></div>
+    <div class="flex gap-2 p-3 border-t border-white/10">
+      <input id="chatInput" class="flex-1 glass px-4 py-2 rounded-full text-sm bg-transparent border border-white/10" placeholder="Type ...">
+      <button onclick="sendChatMessage()" class="bg-[#FF2E93] px-4 rounded-full"><i class="fas fa-paper-plane"></i></button>
+    </div>
+    <div class="text-xs px-3 pb-2 text-gray-400">4 messages = 10 coins · <span id="chatCoinStatus">0 coins</span></div>
+  </div>
+
+</div>
+
+<script>
+  // ============================================================
+  // DATABASE SCHEMA UPGRADE - Run in Supabase SQL Editor
+  // ============================================================
+  /*
+  -- ADD MISSING COLUMNS TO PROFILES TABLE
+  ALTER TABLE profiles ADD COLUMN IF NOT EXISTS birth_date TEXT;
+  ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country TEXT;
+  ALTER TABLE profiles ADD COLUMN IF NOT EXISTS language TEXT;
+  */
+  // ============================================================
+
+  // ---- PRODUCTION SUPABASE CREDENTIALS ----
+  const SUPABASE_URL = 'https://gdyhishqvycygnkhjxqs.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_uxkVyZNfLAPQ_irjs2-6hQ_FzB-jd64';
+
+  // ---- BUBBLE USERS (TDZ SAFE) ----
+  const shuffleNames = ['Priya', 'Sneha', 'Anjali', 'Meera', 'Riya', 'Kavya', 'Nisha', 'Pooja', 'Aarti', 'Shruti'];
+  const shuffleEmojis = ['👧', '👩', '👩‍🦰', '👩‍🦳', '👩‍🦱', '👩‍🦲', '👧🏽', '👩🏾', '👩🏼', '👧🏻'];
+
+  let supabaseClient = null;
+  let supabaseInitialized = false;
+  let presenceSubscription = null;
+  let callSignalSubscription = null;
+  let callTimeoutTimer = null;
+  let coinBlockTimer = null;
+  let currentBlockStart = 0;
+  let isCallConnected = false;
+  let pendingIncomingCall = null;
+  let matchingShuffleInterval = null;
+  let matchingShuffleTimeout = null;
+  let selectedLanguage = null;
+  let onboardingData = { nickname: '', gender: '', dob: '' };
+  let selectedRoomTheme = 'ludo';
+  let calendarCurrentDate = new Date(2008, 6, 1);
+  let selectedDate = null;
+  let yearPickerOpen = false;
+
+  try {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    });
+    supabaseInitialized = true;
+    console.log('✅ Supabase initialized in PRODUCTION mode');
+  } catch (error) {
+    console.warn('⚠️ Supabase init error:', error);
+    supabaseClient = {
+      from: () => ({
+        select: () => ({ eq: () => ({ single: () => ({ data: null, error: new Error('Supabase not configured') }) }) }),
+        insert: () => ({ error: null }),
+        update: () => ({ eq: () => ({ error: null }) }),
+        delete: () => ({ eq: () => ({ error: null }) })
+      }),
+      channel: () => ({
+        on: () => ({ subscribe: () => ({}) }),
+        send: () => {},
+        unsubscribe: () => {}
+      }),
+      auth: {
+        signInWithOAuth: () => ({ error: new Error('Supabase not configured') }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } })
+      }
+    };
+  }
+
+  // ---- DEXIE INIT ----
+  const db = new Dexie('YaranaLocalDB');
+  db.version(1).stores({
+    messages: '++id, partnerId, senderId, text, timestamp'
+  });
+
+  // ---- STATE ----
+  const state = {
+    coins: 20,
+    currentScreen: 'onboarding',
+    chatPartner: null,
+    chatMsgCount: 0,
+    safetyMode: false,
+    callInterval: null,
+    callSeconds: 0,
+    onboardingSlide: 0,
+    isVerified: localStorage.getItem('isVerified') === 'true',
+    userName: localStorage.getItem('userName') || 'Max',
+    toastUsers: ['vaishnavi', 'Rina'],
+    toastIndex: 0,
+    followedUsers: JSON.parse(localStorage.getItem('followedUsers')) || [],
+    avatarBase64: localStorage.getItem('userAvatar') || '',
+    userGender: localStorage.getItem('userGender') || null,
+    userId: localStorage.getItem('userId') || null,
+    birthDate: localStorage.getItem('birthDate') || null,
+    country: localStorage.getItem('country') || 'Maharashtra',
+    language: localStorage.getItem('userLanguage') || 'English',
+    peerConnection: null,
+    supabaseChannel: null,
+    localStream: null,
+    isSupabaseConfigured: supabaseInitialized,
+    allRooms: [],
+    isMuted: false,
+    isSpeakerOn: true,
+    matchingInterval: null,
+    matchingProgress: 0,
+    matchingStep: 0,
+    callPartnerId: null,
+    currentCallChannel: null,
+    isCaller: false,
+    callActive: false,
+    shuffledName: '',
+    shuffledEmoji: '',
+    isShuffling: false,
+    isFirstTime: localStorage.getItem('isFirstTime') !== 'false'
+  };
+
+  // ---- HUSKY EYE ANIMATION ----
+  function moveHuskyEyes(direction) {
+    const leftPupil = document.getElementById('leftPupil');
+    const rightPupil = document.getElementById('rightPupil');
+    if (!leftPupil || !rightPupil) return;
+    
+    if (direction === 'down') {
+      // Eyes move down (looking at button)
+      leftPupil.setAttribute('cy', '82');
+      rightPupil.setAttribute('cy', '82');
+    } else {
+      // Eyes move to center (looking straight ahead)
+      leftPupil.setAttribute('cy', '77');
+      rightPupil.setAttribute('cy', '77');
+    }
+  }
+
+  // ---- REAL GOOGLE OAUTH LOGIN ----
+  async function handleGoogleLogin() {
+    if (!state.isSupabaseConfigured) {
+      showToast('Supabase not configured. Please check your credentials.', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin + window.location.pathname
+        }
+      });
+
+      if (error) {
+        console.error('Google OAuth error:', error);
+        showToast('Google login failed. Please try again.', 'error');
+        return;
+      }
+
+      // The user will be redirected to Google
+      // On return, the onAuthStateChange listener will handle the rest
+    } catch (error) {
+      console.error('Google OAuth error:', error);
+      showToast('Google login failed. Please try again.', 'error');
+    }
+  }
+
+  // ---- SETUP SUPABASE AUTH STATE LISTENER ----
+  function setupAuthListener() {
+    if (!state.isSupabaseConfigured) return;
+
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state change:', event, session);
+      
+      if (event === 'SIGNED_IN' && session) {
+        const user = session.user;
+        if (user) {
+          // Extract user data from metadata
+          const fullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User';
+          const avatarUrl = user.user_metadata?.avatar_url || '';
+          
+          // Update state
+          state.userName = fullName;
+          state.isVerified = true;
+          state.userGender = state.userGender || 'male'; // Default if not set
+          
+          // Save to localStorage
+          localStorage.setItem('userName', fullName);
+          localStorage.setItem('isVerified', 'true');
+          if (avatarUrl) {
+            state.avatarBase64 = avatarUrl;
+            localStorage.setItem('userAvatar', avatarUrl);
+            updateAllAvatars(avatarUrl);
+          }
+          
+          // Update profile UI
+          updateProfileUI();
+          updateCoinsUI();
+          
+          showToast('✅ Verified via Google!', 'success');
+          
+          // Automatically finish onboarding
+          await finishOnboarding();
+        }
+      } else if (event === 'SIGNED_OUT') {
+        console.log('User signed out');
+      }
+    });
+  }
+
+  // ---- HELPER: CALCULATE AGE FROM DOB ----
+  function calculateAgeRange(birthDateStr) {
+    if (!birthDateStr) return '18-21';
+    const parts = birthDateStr.split('/');
+    if (parts.length !== 3) return '18-21';
+    const birthYear = parseInt(parts[2]);
+    const currentYear = new Date().getFullYear();
+    const age = currentYear - birthYear;
+    if (isNaN(age) || age < 0) return '18-21';
+    const lower = Math.max(18, Math.floor(age / 5) * 5);
+    const upper = Math.min(65, lower + 4);
+    return lower + '-' + upper;
+  }
+
+  // ---- UPDATE PROFILE UI ----
+  function updateProfileUI() {
+    const profileName = document.getElementById('profileDisplayName');
+    const profileLocation = document.getElementById('profileLocationAge');
+    const profileLang = document.getElementById('profileLanguageDisplay');
+    const drawerName = document.getElementById('drawerUserName');
+    const drawerDetails = document.getElementById('drawerUserDetails');
+    const homeName = document.getElementById('homeUserName');
+    const welcomeName = document.getElementById('welcomeUserName');
+
+    if (profileName) profileName.textContent = state.userName || 'Maxx';
+    if (drawerName) drawerName.textContent = state.userName || 'Max';
+    if (homeName) homeName.textContent = state.userName || 'Max';
+    if (welcomeName) welcomeName.textContent = state.userName || 'Max';
+
+    const ageRange = calculateAgeRange(state.birthDate);
+    const countryDisplay = state.country || 'Maharashtra';
+    if (profileLocation) profileLocation.textContent = countryDisplay + ' · ' + ageRange;
+    if (drawerDetails) drawerDetails.textContent = countryDisplay + ' · ' + ageRange;
+
+    const langDisplay = state.language || 'English';
+    if (profileLang) profileLang.textContent = langDisplay;
+  }
+
+  // ---- CUSTOM YEAR PICKER FUNCTIONS ----
+  function toggleYearPicker() {
+    yearPickerOpen = !yearPickerOpen;
+    const popup = document.getElementById('yearPickerPopup');
+    if (yearPickerOpen) {
+      renderYearGrid();
+      popup.classList.add('open');
+    } else {
+      popup.classList.remove('open');
+    }
+  }
+
+  function renderYearGrid() {
+    const grid = document.getElementById('yearGrid');
+    const currentYear = calendarCurrentDate.getFullYear();
+    grid.innerHTML = '';
+    for (let year = 2026; year >= 1940; year--) {
+      const cell = document.createElement('div');
+      cell.className = 'year-cell' + (year === currentYear ? ' selected' : '') + (year === new Date().getFullYear() ? ' current' : '');
+      cell.textContent = year;
+      cell.onclick = function() { selectYear(year); };
+      grid.appendChild(cell);
+    }
+  }
+
+  function selectYear(year) {
+    calendarCurrentDate.setFullYear(year);
+    document.getElementById('yearDisplayText').textContent = year;
+    yearPickerOpen = false;
+    document.getElementById('yearPickerPopup').classList.remove('open');
+    renderCalendar();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    document.getElementById('calendarMonthYear').textContent = monthNames[calendarCurrentDate.getMonth()] + ' ' + calendarCurrentDate.getFullYear();
+  }
+
+  // ---- OFFLINE CLEANUP ----
+  async function setUserOffline() {
+    if (state.userId && state.isSupabaseConfigured) {
+      try {
+        const data = JSON.stringify({ is_online: false });
+        const blob = new Blob([data], { type: 'application/json' });
+        navigator.sendBeacon(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + state.userId, blob);
+        await supabaseClient.from('profiles').update({ is_online: false }).eq('id', state.userId);
+        console.log('👋 User set offline');
+      } catch (error) { console.warn('Offline cleanup error:', error); }
+    }
+  }
+
+  window.addEventListener('beforeunload', setUserOffline);
+  window.addEventListener('unload', setUserOffline);
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      setUserOffline();
+    } else if (state.userId && state.isSupabaseConfigured) {
+      supabaseClient.from('profiles').update({ is_online: true }).eq('id', state.userId).catch(() => {});
+    }
+  });
+
+  // ---- CUSTOM TOAST ----
+  function showToast(message, type = 'info', duration = 3000) {
+    const toast = document.getElementById('customToast');
+    const icon = document.getElementById('toastIcon');
+    const msg = document.getElementById('toastMessage');
+    toast.className = 'custom-toast ' + type;
+    icon.innerHTML = type === 'success' ? '<i class="fas fa-check-circle text-green-400"></i>' :
+                     type === 'error' ? '<i class="fas fa-exclamation-circle text-red-400"></i>' :
+                     type === 'warning' ? '<i class="fas fa-exclamation-triangle text-yellow-400"></i>' :
+                     '<i class="fas fa-info-circle text-blue-400"></i>';
+    msg.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), duration);
+  }
+
+  // ---- GENDER SHEET ----
+  function openGenderSheet() {
+    document.getElementById('genderBottomSheet').classList.add('open');
+    document.getElementById('genderSheetOverlay').classList.add('show');
+    bottomNav.classList.add('hidden');
+  }
+
+  function closeGenderSheet() {
+    document.getElementById('genderBottomSheet').classList.remove('open');
+    document.getElementById('genderSheetOverlay').classList.remove('show');
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      bottomNav.classList.remove('hidden');
+    }
+  }
+
+  function selectGenderFromSheet(gender) {
+    document.querySelectorAll('.gender-sheet-option').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`.gender-sheet-option[data-gender="${gender}"]`).classList.add('selected');
+    onboardingData.gender = gender;
+    state.userGender = gender;
+    localStorage.setItem('userGender', gender);
+    const displayText = document.getElementById('genderDisplayText');
+    const badge = document.getElementById('genderDisplayBadge');
+    displayText.textContent = gender === 'male' ? 'Male Edit' : 'Female Edit';
+    badge.classList.remove('hidden');
+    badge.textContent = '✔️';
+    closeGenderSheet();
+    validateOnboardingSubmit();
+  }
+
+  // ---- CALENDAR SHEET ----
+  function openCalendarSheet() {
+    renderCalendar();
+    document.getElementById('calendarBottomSheet').classList.add('open');
+    document.getElementById('calendarSheetOverlay').classList.add('show');
+    bottomNav.classList.add('hidden');
+    document.getElementById('yearDisplayText').textContent = calendarCurrentDate.getFullYear();
+  }
+
+  function closeCalendarSheet() {
+    document.getElementById('calendarBottomSheet').classList.remove('open');
+    document.getElementById('calendarSheetOverlay').classList.remove('show');
+    yearPickerOpen = false;
+    document.getElementById('yearPickerPopup').classList.remove('open');
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      bottomNav.classList.remove('hidden');
+    }
+  }
+
+  function renderCalendar() {
+    const grid = document.getElementById('calendarGrid');
+    const monthYear = document.getElementById('calendarMonthYear');
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    monthYear.textContent = monthNames[calendarCurrentDate.getMonth()] + ' ' + calendarCurrentDate.getFullYear();
+    
+    const firstDay = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), 1).getDay();
+    const daysInMonth = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() + 1, 0).getDate();
+    const daysInPrevMonth = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), 0).getDate();
+    const today = new Date();
+    
+    let html = '';
+    const dayHeaders = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    dayHeaders.forEach(d => html += `<div class="day-header">${d}</div>`);
+    
+    for (let i = firstDay - 1; i >= 0; i--) {
+      html += `<div class="day-cell other-month">${daysInPrevMonth - i}</div>`;
+    }
+    
+    for (let d = 1; d <= daysInMonth; d++) {
+      const isToday = d === today.getDate() && calendarCurrentDate.getMonth() === today.getMonth() && calendarCurrentDate.getFullYear() === today.getFullYear();
+      const isSelected = d === selectedDate?.getDate() && calendarCurrentDate.getMonth() === selectedDate?.getMonth() && calendarCurrentDate.getFullYear() === selectedDate?.getFullYear();
+      html += `<div class="day-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}" onclick="selectDate(${d})">${d}</div>`;
+    }
+    
+    const totalCells = firstDay + daysInMonth;
+    const remainingCells = (7 - (totalCells % 7)) % 7;
+    for (let i = 1; i <= remainingCells; i++) {
+      html += `<div class="day-cell other-month">${i}</div>`;
+    }
+    
+    grid.innerHTML = html;
+  }
+
+  function changeCalendarMonth(delta) {
+    calendarCurrentDate.setMonth(calendarCurrentDate.getMonth() + delta);
+    renderCalendar();
+    document.getElementById('yearDisplayText').textContent = calendarCurrentDate.getFullYear();
+  }
+
+  function selectDate(day) {
+    selectedDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), day);
+    const formatted = selectedDate.getDate() + '/' + (selectedDate.getMonth() + 1) + '/' + selectedDate.getFullYear();
+    onboardingData.dob = formatted;
+    state.birthDate = formatted;
+    localStorage.setItem('birthDate', formatted);
+    document.getElementById('dobDisplayText').textContent = formatted;
+    document.getElementById('dobDisplayBadge').classList.remove('hidden');
+    closeCalendarSheet();
+    validateOnboardingSubmit();
+  }
+
+  // ---- ONBOARDING VALIDATION ----
+  function validateOnboardingSubmit() {
+    const name = document.getElementById('onboardingNickName').value.trim();
+    const btn = document.getElementById('onboardingSubmitBtn');
+    const error = document.getElementById('onboardingProfileError');
+    const isValid = name.length >= 3 && onboardingData.gender && onboardingData.dob;
+    if (isValid) {
+      btn.disabled = false;
+      error.classList.add('hidden');
+    } else {
+      btn.disabled = true;
+    }
+    const status = document.getElementById('nicknameStatus');
+    if (name.length >= 3) {
+      status.textContent = '✅ Perfect!';
+      status.className = 'text-xs text-green-400 mt-1';
+      status.classList.remove('hidden');
+    } else if (name.length > 0) {
+      status.textContent = '⚠️ Minimum 3 characters';
+      status.className = 'text-xs text-yellow-400 mt-1';
+      status.classList.remove('hidden');
+    } else {
+      status.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('onboardingNickName')?.addEventListener('input', validateOnboardingSubmit);
+
+  // ---- SUBMIT ONBOARDING PROFILE ----
+  function submitOnboardingProfile() {
+    const name = document.getElementById('onboardingNickName').value.trim();
+    if (name.length < 3 || !onboardingData.gender || !onboardingData.dob) {
+      document.getElementById('onboardingProfileError').classList.remove('hidden');
+      return;
+    }
+    state.userName = name;
+    state.userGender = onboardingData.gender;
+    state.birthDate = onboardingData.dob;
+    localStorage.setItem('userName', name);
+    localStorage.setItem('userGender', onboardingData.gender);
+    localStorage.setItem('birthDate', onboardingData.dob);
+    updateProfileUI();
+    showToast('✅ Profile saved!', 'success');
+    state.onboardingSlide = 4;
+    showSlide(4);
+  }
+
+  // ---- LANGUAGE SELECTION ----
+  function selectLanguage(lang) {
+    document.querySelectorAll('.lang-grid-card').forEach(el => {
+      el.classList.remove('selected');
+    });
+    document.querySelector(`.lang-grid-card[data-lang="${lang}"]`).classList.add('selected');
+    selectedLanguage = lang;
+    document.getElementById('onboardingLangSaveBtn').disabled = false;
+    document.getElementById('onboardingLangSaveBtn').className = 'w-full mt-3 py-3 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-semibold transition';
+  }
+
+  function saveLanguage() {
+    if (!selectedLanguage) {
+      showToast('Please select a language', 'warning');
+      return;
+    }
+    state.language = selectedLanguage;
+    localStorage.setItem('userLanguage', selectedLanguage);
+    updateProfileUI();
+    showToast('✅ Language saved!', 'success');
+    state.onboardingSlide = 5;
+    showSlide(5);
+  }
+
+  // ---- SAFETY DECLARATION ----
+  function toggleSafetySubmit() {
+    const checked = document.getElementById('safetyCheckbox').checked;
+    const btn = document.getElementById('safetySubmitBtn');
+    if (checked) {
+      btn.disabled = false;
+      btn.className = 'w-full mt-4 py-3 rounded-full bg-gradient-to-r from-[#FF2E93] to-[#00F0FF] text-white font-semibold transition';
+    } else {
+      btn.disabled = true;
+      btn.className = 'w-full mt-4 py-3 rounded-full bg-gray-600 text-gray-300 font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition';
+    }
+  }
+
+  function submitSafetyDeclaration() {
+    if (!document.getElementById('safetyCheckbox').checked) {
+      showToast('Please accept the declaration', 'warning');
+      return;
+    }
+    showToast('✅ Declaration accepted!', 'success');
+    state.onboardingSlide = 6;
+    showSlide(6);
+  }
+
+  // ---- FIXED: NON-BLOCKING FINISH ONBOARDING ----
+  async function finishOnboarding() {
+    if (!state.isVerified) {
+      showToast('Please verify your account first!', 'warning');
+      return;
+    }
+    
+    // Save the first-time state BEFORE changing it
+    const wasFirstTime = state.isFirstTime;
+    
+    // Save profile to Supabase - NON-BLOCKING (no await)
+    if (state.isSupabaseConfigured) {
+      syncProfileToSupabase(state.userName || 'Max', state.userGender)
+        .then(result => {
+          if (result) console.log('✅ Profile synced to Supabase in background');
+        })
+        .catch(error => {
+          console.warn('Background Supabase sync failed:', error);
+          showToast('Profile saved locally. Database sync will retry.', 'info', 4000);
+        });
+    }
+    
+    // Update localStorage and state AFTER capturing the first-time value
+    localStorage.setItem('isFirstTime', 'false');
+    state.isFirstTime = false;
+    updateProfileUI();
+    
+    // Navigate based on the captured first-time state - IMMEDIATE
+    if (wasFirstTime) {
+      navigateTo('welcome');
+    } else {
+      navigateTo('home');
+      setTimeout(() => {
+        renderStories();
+        renderConnectNow();
+        renderRooms();
+      }, 300);
+    }
+  }
+
+  // ---- EXPERT CALL ----
+  function startExpertCall() {
+    const experts = ['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'];
+    const expert = experts[Math.floor(Math.random() * experts.length)];
+    showToast(`📞 Starting free call with ${expert}...`, 'info');
+    setTimeout(() => {
+      startCall(expert);
+    }, 1000);
+  }
+
+  function skipWelcome() {
+    localStorage.setItem('isFirstTime', 'false');
+    state.isFirstTime = false;
+    navigateTo('home');
+    setTimeout(() => {
+      renderStories();
+      renderConnectNow();
+      renderRooms();
+    }, 300);
+  }
+
+  // ---- CREATE ROOM SHEET ----
+  function openCreateRoomSheet() {
+    document.getElementById('createRoomBottomSheet').classList.add('open');
+    document.getElementById('createRoomSheetOverlay').classList.add('show');
+    bottomNav.classList.add('hidden');
+    document.querySelectorAll('.room-type-option').forEach(el => el.classList.remove('selected'));
+    document.querySelector('.room-type-option[data-theme="ludo"]').classList.add('selected');
+    selectedRoomTheme = 'ludo';
+  }
+
+  function closeCreateRoomSheet() {
+    document.getElementById('createRoomBottomSheet').classList.remove('open');
+    document.getElementById('createRoomSheetOverlay').classList.remove('show');
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      bottomNav.classList.remove('hidden');
+    }
+  }
+
+  function selectRoomType(theme) {
+    document.querySelectorAll('.room-type-option').forEach(el => el.classList.remove('selected'));
+    document.querySelector(`.room-type-option[data-theme="${theme}"]`).classList.add('selected');
+    selectedRoomTheme = theme;
+  }
+
+  function confirmCreateRoomFromSheet() {
+    const themeNames = { ludo: 'Ludo Match', campfire: 'Campfire', neon: 'Neon Games' };
+    showToast(`🎉 Room "${themeNames[selectedRoomTheme]}" created! Invite your FRNDs.`, 'success', 4000);
+    closeCreateRoomSheet();
+  }
+
+  // ---- AVATAR SYSTEM ----
+  function updateAllAvatars(base64) {
+    const avatarElements = [
+      { img: document.getElementById('homeAvatarImg'), fallback: document.getElementById('homeAvatarFallback') },
+      { img: document.getElementById('drawerAvatarImg'), fallback: document.getElementById('drawerAvatarFallback') },
+      { img: document.getElementById('profileAvatarImg'), fallback: document.getElementById('profileAvatarFallback') },
+      { img: document.getElementById('editAvatarImg'), fallback: document.getElementById('editAvatarFallback') },
+      { img: document.getElementById('callerAvatarImg'), fallback: document.getElementById('callerAvatarFallback') }
+    ];
+    avatarElements.forEach(({img, fallback}) => {
+      if (base64 && base64.length > 0) {
+        img.src = base64;
+        img.style.display = 'block';
+        if (fallback) fallback.style.display = 'none';
+      } else {
+        img.style.display = 'none';
+        if (fallback) fallback.style.display = 'block';
+      }
+    });
+  }
+
+  function triggerAvatarUpload() {
+    document.getElementById('avatarUploadInput').click();
+  }
+
+  function handleAvatarUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const base64 = e.target.result;
+      state.avatarBase64 = base64;
+      localStorage.setItem('userAvatar', base64);
+      updateAllAvatars(base64);
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  }
+
+  // ---- SUPABASE SYNC (NON-BLOCKING) ----
+  async function syncProfileToSupabase(username, gender) {
+    if (!state.isSupabaseConfigured) {
+      console.log('📝 Simulated profile sync (local mode)');
+      state.userId = state.userId || 'local-' + Date.now();
+      localStorage.setItem('userId', state.userId);
+      return { id: state.userId, local: true };
+    }
+    try {
+      const payload = {
+        id: state.userId || undefined,
+        username: username,
+        gender: gender,
+        coins: state.coins,
+        is_online: true
+      };
+      if (state.birthDate) payload.birth_date = state.birthDate;
+      if (state.country) payload.country = state.country;
+      if (state.language) payload.language = state.language;
+      
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .upsert(payload)
+        .select();
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        state.userId = data[0].id;
+        localStorage.setItem('userId', state.userId);
+        setupPresenceSubscription();
+        setupCallSignalListener();
+        console.log('✅ Profile synced to Supabase');
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error syncing profile to Supabase:', error);
+      state.userId = state.userId || 'local-' + Date.now();
+      localStorage.setItem('userId', state.userId);
+      return { id: state.userId, local: true };
+    }
+  }
+
+  async function updateUserCoinsInSupabase(coins) {
+    if (!state.isSupabaseConfigured || !state.userId) return;
+    try {
+      await supabaseClient.from('profiles').update({ coins: coins }).eq('id', state.userId);
+    } catch (error) {
+      console.warn('Could not update coins in Supabase:', error);
+    }
+  }
+
+  // ---- REAL-TIME PRESENCE SUBSCRIPTION ----
+  function setupPresenceSubscription() {
+    if (!state.isSupabaseConfigured || presenceSubscription) return;
+    presenceSubscription = supabaseClient
+      .channel('presence-channel')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: 'is_online=eq.true' },
+        (payload) => {
+          console.log('🔄 Presence update detected:', payload);
+          if (state.currentScreen === 'home' || state.currentScreen === 'frnd') {
+            renderStories();
+            renderConnectNow();
+            renderRooms();
+          }
+        }
+      )
+      .subscribe();
+    console.log('📡 Real-time presence subscription active');
+  }
+
+  // ---- CALL SIGNAL LISTENER ----
+  function setupCallSignalListener() {
+    if (!state.isSupabaseConfigured || callSignalSubscription) return;
+    const userChannel = 'user_signals_' + state.userId;
+    callSignalSubscription = supabaseClient
+      .channel(userChannel)
+      .on('broadcast', { event: 'incoming_call' }, (payload) => {
+        console.log('📞 Incoming call from:', payload.payload);
+        handleIncomingCall(payload.payload);
+      })
+      .on('broadcast', { event: 'call_accepted' }, (payload) => {
+        console.log('✅ Call accepted by:', payload.payload);
+        handleCallAccepted(payload.payload);
+      })
+      .on('broadcast', { event: 'call_rejected' }, (payload) => {
+        console.log('❌ Call rejected by:', payload.payload);
+        handleCallRejected(payload.payload);
+      })
+      .subscribe();
+    console.log('📡 Call signal listener active on:', userChannel);
+  }
+
+  // ---- DATA FETCHING ----
+  async function fetchActiveOnlineUsers() {
+    if (!state.userGender) return [];
+    const oppositeGender = state.userGender === 'male' ? 'female' : 'male';
+    if (!state.isSupabaseConfigured) {
+      return bubbleUsers.filter(u => u.gender === oppositeGender);
+    }
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('username, gender')
+        .eq('is_online', true)
+        .eq('gender', oppositeGender)
+        .neq('id', state.userId || '');
+      if (error) throw error;
+      const onlineUsers = data || [];
+      const followedOnly = onlineUsers.filter(u => state.followedUsers.includes(u.username || u.name));
+      return followedOnly;
+    } catch (error) {
+      console.error('Error fetching online users:', error);
+      return [];
+    }
+  }
+
+  async function fetchActiveRooms() {
+    if (!state.isSupabaseConfigured) {
+      return [
+        { id: 'mock1', host_name: 'SHUBHAM', theme: 'ludo', rating: 4.57, is_active: true },
+        { id: 'mock2', host_name: 'Rahul sonawane', theme: 'campfire', rating: 4.0, is_active: true },
+        { id: 'mock3', host_name: 'Aanta he aarambha', theme: 'ludo', rating: 5.0, is_active: true },
+        { id: 'mock4', host_name: 'खान्देशी शुभम', theme: 'campfire', rating: 4.25, is_active: true }
+      ];
+    }
+    try {
+      const { data, error } = await supabaseClient
+        .from('rooms')
+        .select('*')
+        .eq('is_active', true)
+        .order('rating', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+      return [];
+    }
+  }
+
+  // ---- RENDER FUNCTIONS WITH SAFE NAME RESOLUTION ----
+  async function renderStories() {
+    const container = document.getElementById('storiesContainer');
+    if (!container) return;
+    const users = await fetchActiveOnlineUsers();
+    if (users.length === 0) {
+      container.innerHTML = `<div class="flex items-center justify-center w-full text-gray-400 text-sm py-2"><span>No active users right now</span></div>`;
+      return;
+    }
+    container.innerHTML = '';
+    const displayUsers = users.slice(0, 6);
+    displayUsers.forEach((user, index) => {
+      const displayName = user.username || user.name || 'User';
+      const colors = ['', 'purple', 'blue'];
+      const colorClass = colors[index % 3] ? `story-ring ${colors[index % 3]}` : 'story-ring';
+      const shortName = displayName.length > 8 ? displayName.substring(0, 6) + '...' : displayName;
+      const storyDiv = document.createElement('div');
+      storyDiv.className = 'flex flex-col items-center cursor-pointer';
+      storyDiv.innerHTML = `
+        <div class="${colorClass} flex items-center justify-center">
+          <div class="inner-avatar">${shortName}</div>
+        </div>
+        <span class="text-[10px] text-gray-400 mt-1">${shortName}</span>
+      `;
+      storyDiv.onclick = () => startCall(displayName);
+      container.appendChild(storyDiv);
+    });
+  }
+
+  async function renderConnectNow() {
+    const container = document.getElementById('connectNowContainer');
+    if (!container) return;
+    const users = await fetchActiveOnlineUsers();
+    if (users.length === 0) {
+      container.innerHTML = `<div class="flex items-center justify-center w-full text-gray-400 text-sm py-2"><span>No one online right now</span></div>`;
+      return;
+    }
+    container.innerHTML = '';
+    const displayUsers = users.slice(0, 3);
+    displayUsers.forEach((user) => {
+      const displayName = user.username || user.name || 'User';
+      const emoji = user.gender === 'male' ? '👦' : '👧';
+      const card = document.createElement('div');
+      card.className = 'glass min-w-[140px] p-3 rounded-2xl';
+      card.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-full bg-[#FF2E93]/30 flex items-center justify-center">${emoji}</span>
+          <div>
+            <p class="font-bold text-sm">${displayName}</p>
+            <p class="text-[10px] text-green-400"><i class="fas fa-circle text-[8px]"></i> Online</p>
+          </div>
+        </div>
+        <button onclick="startCall('${displayName}')" class="mt-2 w-full py-1 bg-[#00F0FF]/20 rounded-full text-xs text-[#00F0FF] font-bold">Call</button>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  function createRoomCard(room, fullWidth = false) {
+    const div = document.createElement('div');
+    div.className = fullWidth ? 'frnd-card' : 'glass min-w-[140px] p-3 rounded-2xl';
+    const themeEmoji = room.theme === 'ludo' ? '🎸' : room.theme === 'campfire' ? '🥰' : '🌟';
+    const themeColor = room.theme === 'ludo' ? 'bg-[#FF2E93]' : room.theme === 'campfire' ? 'bg-[#FFD700]' : 'bg-[#00F0FF]';
+    if (fullWidth) {
+      div.innerHTML = `
+        <div class="flex items-start gap-3">
+          <div class="w-12 h-12 rounded-full ${themeColor}/30 flex items-center justify-center text-xl">${themeEmoji}</div>
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-white">${room.host_name}</span>
+              <i class="fas fa-check-circle text-[#00F0FF] text-xs"></i>
+              <span class="text-[10px] text-[#FFD700]">⭐ ${room.rating || 4.5}</span>
+            </div>
+            <div class="flex gap-2 mt-1 flex-wrap">
+              <span class="text-[10px] bg-[#FF2E93]/20 text-[#FF2E93] px-2 py-0.5 rounded-full">NEWBIE</span>
+              <span class="text-[10px] bg-[#00F0FF]/20 text-[#00F0FF] px-2 py-0.5 rounded-full">Marathi</span>
+            </div>
+          </div>
+          <button onclick="startCountdownAndJoin('${room.theme}')" class="bg-[#00F0FF] text-[#0D0B21] font-bold text-xs px-3 py-1.5 rounded-full">Join Room</button>
+        </div>
+      `;
+    } else {
+      div.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-full ${themeColor}/30 flex items-center justify-center">${themeEmoji}</span>
+          <div>
+            <p class="font-bold text-sm">${room.host_name}</p>
+            <p class="text-[10px] text-green-400"><i class="fas fa-check-circle"></i> Verified</p>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          <span class="text-[10px] bg-[#FFD700]/20 px-2 rounded-full">⭐ ${room.rating || 4.5}</span>
+          <button onclick="startCountdownAndJoin('${room.theme}')" class="text-[10px] bg-[#00F0FF] px-2 py-0.5 rounded-full text-[#0D0B21] font-bold">Join Room</button>
+        </div>
+      `;
+    }
+    return div;
+  }
+
+  async function renderRooms() {
+    const rooms = await fetchActiveRooms();
+    state.allRooms = rooms;
+    const homeContainer = document.getElementById('homeRoomsContainer');
+    if (homeContainer) {
+      homeContainer.innerHTML = '';
+      if (rooms.length === 0) {
+        homeContainer.innerHTML = `<div class="text-gray-400 text-sm py-2">No active rooms available</div>`;
+      } else {
+        rooms.slice(0, 4).forEach(room => homeContainer.appendChild(createRoomCard(room)));
+      }
+    }
+    const frndContainer = document.getElementById('frndRoomsContainer');
+    if (frndContainer) {
+      frndContainer.innerHTML = '';
+      if (rooms.length === 0) {
+        frndContainer.innerHTML = `<div class="text-gray-400 text-sm py-2 text-center">No active rooms available</div>`;
+      } else {
+        rooms.forEach(room => frndContainer.appendChild(createRoomCard(room, true)));
+      }
+    }
+  }
+
+  // ---- FOLLOW SYSTEM ----
+  function toggleFollow(username) {
+    const idx = state.followedUsers.indexOf(username);
+    if (idx > -1) state.followedUsers.splice(idx, 1);
+    else state.followedUsers.push(username);
+    localStorage.setItem('followedUsers', JSON.stringify(state.followedUsers));
+    updateFollowButtons();
+    updateFollowingCount();
+    updateFollowersCount();
+    renderStories();
+    renderConnectNow();
+  }
+
+  function updateFollowButtons() {
+    document.querySelectorAll('.follow-btn').forEach(btn => {
+      const user = btn.dataset.user;
+      if (state.followedUsers.includes(user)) {
+        btn.classList.add('followed');
+        btn.innerHTML = '<i class="fas fa-check"></i>';
+      } else {
+        btn.classList.remove('followed');
+        btn.innerHTML = '<i class="fas fa-plus"></i>';
+      }
+    });
+  }
+
+  function updateFollowingCount() {
+    document.getElementById('followingCount').textContent = state.followedUsers.length;
+  }
+
+  function updateFollowersCount() {
+    document.getElementById('followersCount').textContent = '0';
+  }
+
+  function openFollowingModal() {
+    const container = document.getElementById('followingListContainer');
+    container.innerHTML = '';
+    if (state.followedUsers.length === 0) {
+      container.innerHTML = `<div class="flex flex-col items-center justify-center h-40"><i class="fas fa-users text-4xl text-gray-600"></i><p class="text-gray-400 mt-2 text-sm">No one followed yet</p></div>`;
+    } else {
+      state.followedUsers.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'glass p-3 rounded-2xl flex items-center justify-between';
+        div.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-full bg-[#FF2E93]/30 flex items-center justify-center text-sm">😊</span>
+            <div><p class="font-bold">${user}</p><p class="text-xs text-gray-400">Marathi <i class="fas fa-check-circle text-[#00F0FF] text-[10px]"></i></p></div>
+          </div>
+          <button class="bg-gray-700 text-xs px-3 py-1.5 rounded-full text-gray-400" disabled>Offline</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+    openModal('followingListModal');
+  }
+
+  // ---- SMART TOAST ----
+  function showSmartToast(user) {
+    if (!state.followedUsers.includes(user)) return;
+    document.getElementById('toastUserName').textContent = user;
+    smartToast.classList.remove('hidden-toast');
+    clearTimeout(smartToast._hideTimer);
+    smartToast._hideTimer = setTimeout(() => smartToast.classList.add('hidden-toast'), 6000);
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } catch(e) {}
+  }
+
+  function simulateOnlineUsers() {
+    const onlineUsers = ['vaishnavi', 'Rina', 'sakku', 'Lisha'];
+    const randomUser = onlineUsers[Math.floor(Math.random() * onlineUsers.length)];
+    if (Math.random() < 0.3) showSmartToast(randomUser);
+  }
+  setInterval(simulateOnlineUsers, 15000);
+
+  // ---- DAILY COINS ----
+  function initDailyCoins() {
+    const claimBtn = document.getElementById('claimDailyCoinsBtn');
+    const status = document.getElementById('dailyCoinsStatus');
+    const timerEl = document.getElementById('dailyCoinsTimer');
+    function updateUI() {
+      const now = Date.now();
+      const claimed = parseInt(localStorage.getItem('dailyCoinsClaimedTime')) || 0;
+      const diff = now - claimed;
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (diff >= oneDay) {
+        claimBtn.disabled = false;
+        claimBtn.className = 'bg-[#FFD700] text-[#0D0B21] font-bold px-4 py-1.5 rounded-full text-xs hover:bg-[#FFC700] transition';
+        claimBtn.textContent = 'Claim';
+        status.textContent = '15 coins waiting for you!';
+        status.className = 'text-xs text-green-400';
+        timerEl.textContent = 'Ready to claim!';
+        return;
+      }
+      claimBtn.disabled = true;
+      claimBtn.className = 'bg-gray-600 text-gray-300 font-bold px-4 py-1.5 rounded-full text-xs cursor-not-allowed opacity-60';
+      claimBtn.textContent = 'Claimed';
+      status.textContent = 'Come back tomorrow!';
+      status.className = 'text-xs text-gray-400';
+      const remaining = oneDay - diff;
+      const hours = Math.floor(remaining / (60 * 60 * 1000));
+      const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+      const secs = Math.floor((remaining % (60 * 1000)) / 1000);
+      timerEl.textContent = `Next reward in ${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    }
+    updateUI();
+    setInterval(updateUI, 1000);
+  }
+
+  function claimDailyCoins() {
+    const now = Date.now();
+    const stored = parseInt(localStorage.getItem('dailyCoinsClaimedTime')) || 0;
+    if (now - stored < 24 * 60 * 60 * 1000) {
+      showToast('Already claimed! Come back tomorrow.', 'warning');
+      return;
+    }
+    state.coins += 15;
+    localStorage.setItem('dailyCoinsClaimedTime', now);
+    updateCoinsUI();
+    initDailyCoins();
+    showToast('🎉 +15 coins claimed!', 'success');
+  }
+
+  // ---- MATCHING SHUFFLE ----
+  function startMatchingShuffle(oppositeUsers) {
+    if (state.isShuffling) return;
+    state.isShuffling = true;
+    const shuffleCard = document.querySelector('.matching-shuffle-card');
+    const shuffleName = document.getElementById('shuffleName');
+    const shuffleAvatar = document.getElementById('shuffleAvatar');
+    const shuffleStatus = document.getElementById('shuffleStatus');
+    if (shuffleCard) shuffleCard.classList.add('shuffling');
+    if (shuffleStatus) shuffleStatus.textContent = '🔄 Searching...';
+
+    let shuffleCount = 0;
+    const maxShuffles = 15 + Math.floor(Math.random() * 10);
+
+    matchingShuffleInterval = setInterval(() => {
+      const randomIndex = Math.floor(Math.random() * shuffleNames.length);
+      const randomEmojiIndex = Math.floor(Math.random() * shuffleEmojis.length);
+      state.shuffledName = shuffleNames[randomIndex];
+      state.shuffledEmoji = shuffleEmojis[randomEmojiIndex];
+      if (shuffleName) shuffleName.textContent = state.shuffledName;
+      if (shuffleAvatar) shuffleAvatar.innerHTML = `<div class="inner">${state.shuffledEmoji}</div>`;
+      shuffleCount++;
+      
+      if (shuffleCount >= maxShuffles) {
+        clearInterval(matchingShuffleInterval);
+        matchingShuffleInterval = null;
+        
+        if (oppositeUsers && oppositeUsers.length > 0) {
+          const matched = oppositeUsers[Math.floor(Math.random() * oppositeUsers.length)];
+          state.shuffledName = matched.username || matched.name || 'User';
+          state.shuffledEmoji = matched.gender === 'male' ? '👦' : '👧';
+        } else {
+          state.shuffledName = shuffleNames[Math.floor(Math.random() * shuffleNames.length)];
+          state.shuffledEmoji = shuffleEmojis[Math.floor(Math.random() * shuffleEmojis.length)];
+        }
+        
+        if (shuffleName) shuffleName.textContent = state.shuffledName;
+        if (shuffleAvatar) shuffleAvatar.innerHTML = `<div class="inner">${state.shuffledEmoji}</div>`;
+        if (shuffleStatus) shuffleStatus.textContent = '✅ Match Found!';
+        if (shuffleCard) shuffleCard.classList.remove('shuffling');
+        state.isShuffling = false;
+        
+        matchingShuffleTimeout = setTimeout(() => {
+          matchingShuffleTimeout = null;
+          const overlay = document.getElementById('matchingOverlay');
+          if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+          }
+          startCall(state.shuffledName);
+        }, 1000);
+      }
+    }, 150);
+  }
+
+  // ---- CANCEL MATCHING ----
+  async function cancelMatching() {
+    console.log('🛑 Cancelling matching...');
+    if (matchingShuffleInterval) {
+      clearInterval(matchingShuffleInterval);
+      matchingShuffleInterval = null;
+    }
+    if (matchingShuffleTimeout) {
+      clearTimeout(matchingShuffleTimeout);
+      matchingShuffleTimeout = null;
+    }
+    if (state.matchingInterval) {
+      clearInterval(state.matchingInterval);
+      state.matchingInterval = null;
+    }
+    if (state.supabaseChannel) {
+      try {
+        await state.supabaseChannel.unsubscribe();
+      } catch(e) { console.warn('Unsubscribe error:', e); }
+      state.supabaseChannel = null;
+    }
+    if (state.userId && state.isSupabaseConfigured) {
+      try {
+        await supabaseClient.from('matching_queue').delete().eq('user_id', state.userId);
+        console.log('✅ Removed from matching queue');
+      } catch(e) { console.warn('Queue delete error:', e); }
+    }
+    const overlay = document.getElementById('matchingOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.style.display = 'none';
+    }
+    const progressFill = document.getElementById('matchingProgressFill');
+    if (progressFill) progressFill.style.width = '0%';
+    const statusText = document.getElementById('matchingStatusText');
+    if (statusText) statusText.textContent = 'Finding your perfect match...';
+    document.querySelectorAll('.matching-status-steps .step').forEach((el, i) => {
+      el.className = i === 0 ? 'step active' : 'step';
+    });
+    const shuffleName = document.getElementById('shuffleName');
+    const shuffleAvatar = document.getElementById('shuffleAvatar');
+    const shuffleStatus = document.getElementById('shuffleStatus');
+    if (shuffleName) shuffleName.textContent = 'Finding...';
+    if (shuffleAvatar) shuffleAvatar.innerHTML = '<div class="inner">😊</div>';
+    if (shuffleStatus) shuffleStatus.textContent = '🔄 Searching';
+    const shuffleCard = document.querySelector('.matching-shuffle-card');
+    if (shuffleCard) shuffleCard.classList.remove('shuffling');
+    state.isShuffling = false;
+    showToast('Matching cancelled', 'info');
+  }
+
+  // ---- WEBRTC PEER CONNECTION ----
+  async function initializePeerConnection(otherUserId) {
+    if (!state.isSupabaseConfigured) {
+      console.log('📞 Simulated WebRTC');
+      return;
+    }
+
+    const roomName = [state.userId, otherUserId].sort().join('_');
+    const config = {
+      iceServers: [
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
+    };
+
+    state.peerConnection = new RTCPeerConnection(config);
+
+    try {
+      state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      state.localStream.getTracks().forEach(track => {
+        state.peerConnection.addTrack(track, state.localStream);
+      });
+      console.log('🎤 Microphone connected');
+    } catch (err) {
+      console.warn('⚠️ Could not access microphone:', err);
+    }
+
+    state.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        supabaseClient.channel('call_' + roomName).send({
+          type: 'broadcast',
+          event: 'ice_candidate',
+          payload: { candidate: event.candidate, userId: state.userId }
+        });
+      }
+    };
+
+    state.peerConnection.ontrack = (event) => {
+      console.log('📡 Received remote audio track');
+      const audio = new Audio();
+      audio.srcObject = event.streams[0];
+      audio.autoplay = true;
+      if (!state.isSpeakerOn) audio.muted = true;
+    };
+
+    const callChannel = supabaseClient.channel('call_' + roomName);
+    state.currentCallChannel = callChannel;
+
+    callChannel
+      .on('broadcast', { event: 'offer' }, async (payload) => {
+        if (payload.payload.userId === otherUserId) {
+          await state.peerConnection.setRemoteDescription(
+            new RTCSessionDescription(payload.payload.offer)
+          );
+          const answer = await state.peerConnection.createAnswer();
+          await state.peerConnection.setLocalDescription(answer);
+          callChannel.send({
+            type: 'broadcast',
+            event: 'answer',
+            payload: { answer: answer, userId: state.userId }
+          });
+        }
+      })
+      .on('broadcast', { event: 'answer' }, async (payload) => {
+        if (payload.payload.userId === otherUserId) {
+          await state.peerConnection.setRemoteDescription(
+            new RTCSessionDescription(payload.payload.answer)
+          );
+        }
+      })
+      .on('broadcast', { event: 'ice_candidate' }, async (payload) => {
+        if (payload.payload.userId === otherUserId) {
+          await state.peerConnection.addIceCandidate(
+            new RTCIceCandidate(payload.payload.candidate)
+          );
+        }
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED' && state.isCaller) {
+          console.log('📡 Signaling channel ready, sending offer...');
+          try {
+            if (!state.localStream) {
+              try {
+                state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.localStream.getTracks().forEach(track => {
+                  state.peerConnection.addTrack(track, state.localStream);
+                });
+              } catch (err) {
+                console.warn('⚠️ Could not get mic for offer:', err);
+              }
+            }
+            const offer = await state.peerConnection.createOffer();
+            await state.peerConnection.setLocalDescription(offer);
+            callChannel.send({
+              type: 'broadcast',
+              event: 'offer',
+              payload: { offer: offer, userId: state.userId }
+            });
+          } catch (err) {
+            console.warn('⚠️ Could not create offer:', err);
+          }
+        }
+      });
+  }
+
+  // ---- CALL UI CONTROLS ----
+  function toggleSpeaker() {
+    state.isSpeakerOn = !state.isSpeakerOn;
+    const btn = document.getElementById('speakerBtn');
+    btn.innerHTML = state.isSpeakerOn ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+    document.querySelectorAll('audio').forEach(a => a.muted = !state.isSpeakerOn);
+  }
+
+  function toggleMicrophone() {
+    state.isMuted = !state.isMuted;
+    const btn = document.getElementById('micBtn');
+    btn.classList.toggle('muted');
+    btn.innerHTML = state.isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+    if (state.localStream) {
+      state.localStream.getAudioTracks().forEach(track => track.enabled = !state.isMuted);
+    }
+  }
+
+  // ---- COIN BLOCK MANAGEMENT ----
+  function startCoinBlockTimer() {
+    if (state.coins < 10) {
+      showToast('Insufficient coins to start call. Please add coins.', 'error');
+      endCall();
+      return;
+    }
+    state.coins -= 10;
+    updateCoinsUI();
+    updateUserCoinsInSupabase(state.coins);
+    const callCoinsBalance = document.getElementById('callCoinsBalance');
+    if (callCoinsBalance) callCoinsBalance.textContent = state.coins;
+    currentBlockStart = Date.now();
+
+    coinBlockTimer = setInterval(() => {
+      const elapsed = (Date.now() - currentBlockStart) / 1000;
+      const blocks = Math.floor(elapsed / 300);
+      if (blocks > 0) {
+        if (state.coins < 10) {
+          clearInterval(coinBlockTimer);
+          showToast('Disconnected: Insufficient coins.', 'error');
+          endCall();
+          return;
+        }
+        state.coins -= 10;
+        updateCoinsUI();
+        updateUserCoinsInSupabase(state.coins);
+        const callCoinsBalance2 = document.getElementById('callCoinsBalance');
+        if (callCoinsBalance2) callCoinsBalance2.textContent = state.coins;
+        currentBlockStart = Date.now();
+        console.log('💳 Deducted 10 coins for next 5-minute block');
+      }
+    }, 1000);
+  }
+
+  // ---- INCOMING CALL HANDLERS ----
+  function handleIncomingCall(payload) {
+    if (state.callActive || document.getElementById('callOverlay').style.display !== 'none') {
+      const roomName = [state.userId, payload.callerId].sort().join('_');
+      supabaseClient.channel('call_' + roomName).send({
+        type: 'broadcast',
+        event: 'call_rejected',
+        payload: { userId: state.userId, reason: 'busy' }
+      });
+      return;
+    }
+
+    pendingIncomingCall = payload;
+    const nameEl = document.getElementById('incomingCallerName');
+    if (nameEl) nameEl.textContent = payload.callerName || 'Unknown';
+    const fallback = document.getElementById('incomingAvatarFallback');
+    if (fallback) fallback.textContent = (payload.callerName || 'U').charAt(0).toUpperCase();
+    const img = document.getElementById('incomingAvatarImg');
+    if (img) img.style.display = 'none';
+    const modal = document.getElementById('incomingCallModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 440;
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.value = 550;
+        gain2.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc2.start(ctx.currentTime);
+        osc2.stop(ctx.currentTime + 0.3);
+      }, 500);
+    } catch(e) {}
+  }
+
+  function acceptIncomingCall() {
+    if (!pendingIncomingCall) return;
+    const modal = document.getElementById('incomingCallModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+
+    const payload = pendingIncomingCall;
+    const roomName = [state.userId, payload.callerId].sort().join('_');
+
+    supabaseClient.channel('call_' + roomName).send({
+      type: 'broadcast',
+      event: 'call_accepted',
+      payload: { userId: state.userId, username: state.userName }
+    });
+
+    state.callPartnerId = payload.callerId;
+    state.isCaller = false;
+    isCallConnected = true;
+    state.callActive = true;
+
+    const nameEl = document.getElementById('callName');
+    if (nameEl) nameEl.textContent = payload.callerName || 'Unknown';
+    const statusEl = document.getElementById('callStatus');
+    if (statusEl) statusEl.textContent = '📞 Connecting...';
+    const subStatus = document.getElementById('callSubStatus');
+    if (subStatus) subStatus.textContent = 'Establishing secure connection';
+    const overlay = document.getElementById('callOverlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.style.display = 'flex';
+    }
+    const balance = document.getElementById('callCoinsBalance');
+    if (balance) balance.textContent = state.coins;
+
+    const partnerFallback = document.getElementById('partnerAvatarFallback');
+    if (partnerFallback) partnerFallback.textContent = (payload.callerName || 'U').charAt(0).toUpperCase();
+    const partnerImg = document.getElementById('partnerAvatarImg');
+    if (partnerImg) partnerImg.style.display = 'none';
+
+    initializePeerConnection(payload.callerId);
+
+    state.callSeconds = 0;
+    const timer = document.getElementById('callTimer');
+    if (timer) timer.textContent = '00:00';
+    if (state.callInterval) clearInterval(state.callInterval);
+    state.callInterval = setInterval(() => {
+      state.callSeconds++;
+      const m = String(Math.floor(state.callSeconds/60)).padStart(2,'0');
+      const s = String(state.callSeconds%60).padStart(2,'0');
+      if (timer) timer.textContent = `${m}:${s}`;
+      if (statusEl) statusEl.textContent = '🔴 Live';
+      if (subStatus) subStatus.textContent = 'Feeling Lonely';
+    }, 1000);
+
+    startCoinBlockTimer();
+    pendingIncomingCall = null;
+  }
+
+  function declineIncomingCall() {
+    if (!pendingIncomingCall) return;
+    const payload = pendingIncomingCall;
+    const roomName = [state.userId, payload.callerId].sort().join('_');
+    supabaseClient.channel('call_' + roomName).send({
+      type: 'broadcast',
+      event: 'call_rejected',
+      payload: { userId: state.userId }
+    });
+    const modal = document.getElementById('incomingCallModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = 'none';
+    }
+    pendingIncomingCall = null;
+  }
+
+  function handleCallAccepted(payload) {
+    if (!state.isCaller) return;
+    isCallConnected = true;
+    state.callActive = true;
+    const statusEl = document.getElementById('callStatus');
+    if (statusEl) statusEl.textContent = '📞 Connected (P2P)';
+    const subStatus = document.getElementById('callSubStatus');
+    if (subStatus) subStatus.textContent = 'Feeling Lonely';
+    startCoinBlockTimer();
+    if (callTimeoutTimer) {
+      clearTimeout(callTimeoutTimer);
+      callTimeoutTimer = null;
+    }
+  }
+
+  function handleCallRejected(payload) {
+    if (!state.isCaller) return;
+    if (callTimeoutTimer) {
+      clearTimeout(callTimeoutTimer);
+      callTimeoutTimer = null;
+    }
+    if (state.callInterval) {
+      clearInterval(state.callInterval);
+      state.callInterval = null;
+    }
+    const overlay = document.getElementById('callOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.style.display = 'none';
+    }
+    showToast('Call declined by recipient.', 'info');
+    state.callActive = false;
+    isCallConnected = false;
+    if (state.currentCallChannel) {
+      state.currentCallChannel.unsubscribe();
+      state.currentCallChannel = null;
+    }
+  }
+
+  // ---- START CALL ----
+  async function startCall(name) {
+    if (!state.followedUsers.includes(name) && !['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'].includes(name)) {
+      showToast('You can only call people you follow. Follow them first!', 'warning');
+      return;
+    }
+
+    const onlineUsers = await fetchActiveOnlineUsers();
+    const isOnline = onlineUsers.some(u => (u.username || u.name) === name) || ['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'].includes(name);
+    if (!isOnline) {
+      showToast('User is not online right now.', 'warning');
+      return;
+    }
+
+    if (state.coins < 10 && !['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'].includes(name)) {
+      showToast('Not enough coins! Need 10 coins to start a call.', 'warning');
+      return;
+    }
+
+    let partnerId = null;
+    if (state.isSupabaseConfigured && !['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'].includes(name)) {
+      try {
+        const { data } = await supabaseClient
+          .from('profiles')
+          .select('id')
+          .eq('username', name)
+          .single();
+        if (data) partnerId = data.id;
+      } catch(e) { console.warn('Could not fetch partner ID:', e); }
+    }
+    if (!partnerId && !['Neha Pal', 'Akash Mishra', 'Roshni Bhatia', 'Suresh Kumar'].includes(name)) {
+      showToast('Could not find user. Please try again.', 'error');
+      return;
+    }
+
+    state.callPartnerId = partnerId || 'mock-' + Date.now();
+    state.isCaller = true;
+    state.callActive = true;
+    isCallConnected = false;
+
+    const nameEl = document.getElementById('callName');
+    if (nameEl) nameEl.textContent = name;
+    const statusEl = document.getElementById('callStatus');
+    if (statusEl) statusEl.textContent = '📞 Calling...';
+    const subStatus = document.getElementById('callSubStatus');
+    if (subStatus) subStatus.textContent = 'Ringing...';
+    const overlay = document.getElementById('callOverlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.style.display = 'flex';
+    }
+    const balance = document.getElementById('callCoinsBalance');
+    if (balance) balance.textContent = state.coins;
+    const timer = document.getElementById('callTimer');
+    if (timer) timer.textContent = '00:00';
+
+    const partnerFallback = document.getElementById('partnerAvatarFallback');
+    if (partnerFallback) partnerFallback.textContent = name.charAt(0).toUpperCase();
+    const partnerImg = document.getElementById('partnerAvatarImg');
+    if (partnerImg) partnerImg.style.display = 'none';
+
+    if (state.callInterval) clearInterval(state.callInterval);
+    state.callInterval = setInterval(() => {
+      state.callSeconds++;
+      const m = String(Math.floor(state.callSeconds/60)).padStart(2,'0');
+      const s = String(state.callSeconds%60).padStart(2,'0');
+      if (timer) timer.textContent = `${m}:${s}`;
+    }, 1000);
+
+    if (state.isSupabaseConfigured && state.userId && partnerId) {
+      const roomName = [state.userId, partnerId].sort().join('_');
+      const callChannel = supabaseClient.channel('call_' + roomName);
+      state.currentCallChannel = callChannel;
+
+      callChannel.subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          callChannel.send({
+            type: 'broadcast',
+            event: 'incoming_call',
+            payload: {
+              callerId: state.userId,
+              callerName: state.userName,
+              avatar: state.avatarBase64
+            }
+          });
+          console.log('📞 Call signal sent to:', name);
+        }
+      });
+
+      initializePeerConnection(partnerId);
+
+      callTimeoutTimer = setTimeout(() => {
+        if (!isCallConnected) {
+          if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+          }
+          if (state.callInterval) {
+            clearInterval(state.callInterval);
+            state.callInterval = null;
+          }
+          if (state.currentCallChannel) {
+            state.currentCallChannel.unsubscribe();
+            state.currentCallChannel = null;
+          }
+          showToast('Call timed out. No one answered.', 'info');
+          state.callActive = false;
+          isCallConnected = false;
+        }
+      }, 30000);
+    } else {
+      // Simulated call for experts or mock mode
+      setTimeout(() => {
+        if (statusEl) statusEl.textContent = '📞 Connected (Simulated)';
+        if (subStatus) subStatus.textContent = 'Feeling Lonely';
+        isCallConnected = true;
+        state.callActive = true;
+        startCoinBlockTimer();
+      }, 1500);
+      
+      callTimeoutTimer = setTimeout(() => {
+        if (!isCallConnected) {
+          if (overlay) {
+            overlay.classList.add('hidden');
+            overlay.style.display = 'none';
+          }
+          if (state.callInterval) {
+            clearInterval(state.callInterval);
+            state.callInterval = null;
+          }
+          showToast('Call timed out. No one answered.', 'info');
+          state.callActive = false;
+          isCallConnected = false;
+        }
+      }, 30000);
+    }
+  }
+
+  // ---- END CALL ----
+  function endCall() {
+    clearInterval(state.callInterval);
+    if (coinBlockTimer) {
+      clearInterval(coinBlockTimer);
+      coinBlockTimer = null;
+    }
+    if (callTimeoutTimer) {
+      clearTimeout(callTimeoutTimer);
+      callTimeoutTimer = null;
+    }
+    const overlay = document.getElementById('callOverlay');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.style.display = 'none';
+    }
+    if (state.peerConnection) {
+      state.peerConnection.close();
+      state.peerConnection = null;
+    }
+    if (state.localStream) {
+      state.localStream.getTracks().forEach(track => track.stop());
+      state.localStream = null;
+    }
+    if (state.currentCallChannel) {
+      state.currentCallChannel.unsubscribe();
+      state.currentCallChannel = null;
+    }
+    state.callPartnerId = null;
+    state.callActive = false;
+    isCallConnected = false;
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      bottomNav.classList.remove('hidden');
+    }
+  }
+
+  // ---- COUNTDOWN & JOIN ----
+  function startCountdownAndJoin(theme) {
+    const nav = document.getElementById('bottomNav');
+    if (nav) nav.classList.add('hidden');
+    const overlay = document.getElementById('countdownOverlay');
+    if (overlay) overlay.style.display = 'flex';
+    let count = 3;
+    const numEl = document.getElementById('countdownNumber');
+    if (numEl) numEl.textContent = count;
+    if (numEl) numEl.style.animation = 'none';
+    void numEl?.offsetHeight;
+    if (numEl) numEl.style.animation = 'pop 0.6s ease-out';
+    const interval = setInterval(() => {
+      count--;
+      if (count > 0) {
+        if (numEl) numEl.textContent = count;
+        if (numEl) numEl.style.animation = 'none';
+        void numEl?.offsetHeight;
+        if (numEl) numEl.style.animation = 'pop 0.6s ease-out';
+      } else {
+        clearInterval(interval);
+        if (overlay) overlay.style.display = 'none';
+        const ludo = document.getElementById('ludoTheme');
+        const campfire = document.getElementById('campfireTheme');
+        const neon = document.getElementById('neonTheme');
+        if (ludo) ludo.style.display = 'none';
+        if (campfire) campfire.style.display = 'none';
+        if (neon) neon.style.display = 'none';
+        if (theme === 'ludo' && ludo) ludo.style.display = 'block';
+        else if (theme === 'campfire' && campfire) campfire.style.display = 'block';
+        else if (theme === 'neon' && neon) neon.style.display = 'block';
+        openModal('activeVoiceRoom');
+      }
+    }, 1000);
+  }
+
+  // ---- MODAL HELPERS ----
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('open');
+    toggleDrawer();
+    const nav = document.getElementById('bottomNav');
+    if (nav) nav.classList.add('hidden');
+  }
+  
+  function closeModal(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+    const ludo = document.getElementById('ludoTheme');
+    const campfire = document.getElementById('campfireTheme');
+    const neon = document.getElementById('neonTheme');
+    if (ludo) ludo.style.display = 'none';
+    if (campfire) campfire.style.display = 'none';
+    if (neon) neon.style.display = 'none';
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      const nav = document.getElementById('bottomNav');
+      if (nav) nav.classList.remove('hidden');
+    }
+  }
+  
+  function openBottomSheet(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('open');
+    const overlay = document.getElementById('langSheetOverlay');
+    if (overlay) overlay.classList.add('show');
+    toggleDrawer();
+    const nav = document.getElementById('bottomNav');
+    if (nav) nav.classList.add('hidden');
+  }
+  
+  function closeBottomSheet(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
+    const overlay = document.getElementById('langSheetOverlay');
+    if (overlay) overlay.classList.remove('show');
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      const nav = document.getElementById('bottomNav');
+      if (nav) nav.classList.remove('hidden');
+    }
+  }
+
+  // ---- ONBOARDING NAVIGATION ----
+  const slideItems = document.querySelectorAll('.slide-item');
+  const dots = document.querySelectorAll('.onboarding-dot');
+  const nextBtn = document.getElementById('onboardingNextBtn');
+
+  function showSlide(index) {
+    slideItems.forEach((el, i) => el.classList.toggle('hidden', i !== index));
+    dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
+    if (index === 3) {
+      if (state.userName) {
+        const nickInput = document.getElementById('onboardingNickName');
+        if (nickInput) nickInput.value = state.userName;
+      }
+      if (state.userGender) {
+        onboardingData.gender = state.userGender;
+        const displayText = document.getElementById('genderDisplayText');
+        const badge = document.getElementById('genderDisplayBadge');
+        if (displayText) displayText.textContent = state.userGender === 'male' ? 'Male Edit' : 'Female Edit';
+        if (badge) badge.classList.remove('hidden');
+      }
+      if (state.birthDate) {
+        onboardingData.dob = state.birthDate;
+        const displayText = document.getElementById('dobDisplayText');
+        const badge = document.getElementById('dobDisplayBadge');
+        if (displayText) displayText.textContent = state.birthDate;
+        if (badge) badge.classList.remove('hidden');
+      }
+      validateOnboardingSubmit();
+      if (nextBtn) nextBtn.textContent = 'Next';
+    } else if (index === 4) {
+      if (state.language) {
+        selectLanguage(state.language);
+      }
+      if (nextBtn) nextBtn.textContent = 'Next';
+    } else if (index === 5) {
+      if (nextBtn) nextBtn.textContent = 'Next';
+    } else if (index === 6) {
+      if (state.isVerified) {
+        const finishBtn = document.getElementById('onboardingFinishBtn');
+        if (finishBtn) finishBtn.classList.remove('hidden');
+      }
+      if (nextBtn) nextBtn.textContent = 'Finish';
+    } else {
+      if (nextBtn) nextBtn.textContent = 'Next';
+    }
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', async () => {
+      if (state.onboardingSlide === 3) {
+        return;
+      } else if (state.onboardingSlide === 4) {
+        return;
+      } else if (state.onboardingSlide === 5) {
+        return;
+      } else if (state.onboardingSlide === 6) {
+        if (!state.isVerified) {
+          showToast('Please verify your account first!', 'warning');
+          return;
+        }
+        await finishOnboarding();
+        return;
+      }
+      state.onboardingSlide = Math.min(state.onboardingSlide + 1, 6);
+      showSlide(state.onboardingSlide);
+    });
+  }
+
+  // Initial onboarding state
+  if (state.userName) {
+    const nickInput = document.getElementById('onboardingNickName');
+    if (nickInput) nickInput.value = state.userName;
+  }
+  if (state.userGender) {
+    onboardingData.gender = state.userGender;
+    const displayText = document.getElementById('genderDisplayText');
+    const badge = document.getElementById('genderDisplayBadge');
+    if (displayText) displayText.textContent = state.userGender === 'male' ? 'Male Edit' : 'Female Edit';
+    if (badge) badge.classList.remove('hidden');
+  }
+  if (state.birthDate) {
+    onboardingData.dob = state.birthDate;
+    const displayText = document.getElementById('dobDisplayText');
+    const badge = document.getElementById('dobDisplayBadge');
+    if (displayText) displayText.textContent = state.birthDate;
+    if (badge) badge.classList.remove('hidden');
+  }
+
+  // ---- NAVIGATION ----
+  function navigateTo(screenId) {
+    screens.forEach(s => { s.classList.add('hidden'); s.classList.remove('active'); });
+    const target = document.getElementById(screenId);
+    if (target) {
+      target.classList.remove('hidden');
+      target.classList.add('active');
+    }
+    state.currentScreen = screenId;
+    navItems.forEach(n => n.classList.remove('active'));
+    const navMap = { home:'home', rooms:'rooms', frnd:'frnd', inbox:'inbox', recents:'recents', profile:'profile', welcome:'welcome' };
+    if (navMap[screenId]) {
+      document.querySelector(`.nav-item[data-nav="${navMap[screenId]}"]`)?.classList.add('active');
+    }
+    if (screenId === 'rooms') renderBubbles();
+    if (screenId === 'inbox') {
+      const chatList = document.getElementById('activeChatList');
+      const emptyState = document.getElementById('emptyState');
+      if (chatList) chatList.classList.remove('hidden');
+      if (emptyState) emptyState.classList.add('hidden');
+    }
+    if (screenId === 'recents') {
+      const allContent = document.getElementById('recentsAllContent');
+      const missedContent = document.getElementById('recentsMissedContent');
+      if (allContent) allContent.classList.remove('hidden');
+      if (missedContent) missedContent.classList.add('hidden');
+      updateFollowButtons();
+    }
+    if (screenId === 'welcome') {
+      const welcomeName = document.getElementById('welcomeUserName');
+      if (welcomeName) welcomeName.textContent = state.userName || 'Max';
+    }
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(screenId)) {
+      const nav = document.getElementById('bottomNav');
+      if (nav) nav.classList.remove('hidden');
+    } else {
+      const nav = document.getElementById('bottomNav');
+      if (nav) nav.classList.add('hidden');
+    }
+    updateCoinsUI();
+    updateFollowingCount();
+    updateFollowersCount();
+    updateProfileUI();
+    if (screenId === 'home' || screenId === 'frnd') {
+      setTimeout(() => {
+        renderStories();
+        renderConnectNow();
+        renderRooms();
+      }, 200);
+    }
+  }
+
+  // ---- RECENTS TABS ----
+  const recentsAllTab = document.getElementById('recentsAllTab');
+  const recentsMissedTab = document.getElementById('recentsMissedTab');
+  if (recentsAllTab) {
+    recentsAllTab.addEventListener('click', function() {
+      const allContent = document.getElementById('recentsAllContent');
+      const missedContent = document.getElementById('recentsMissedContent');
+      if (allContent) allContent.classList.remove('hidden');
+      if (missedContent) missedContent.classList.add('hidden');
+      this.classList.add('text-[#00F0FF]', 'border-[#00F0FF]');
+      this.classList.remove('text-gray-400', 'border-transparent');
+      if (recentsMissedTab) {
+        recentsMissedTab.classList.remove('text-[#00F0FF]', 'border-[#00F0FF]');
+        recentsMissedTab.classList.add('text-gray-400', 'border-transparent');
+      }
+    });
+  }
+  if (recentsMissedTab) {
+    recentsMissedTab.addEventListener('click', function() {
+      const allContent = document.getElementById('recentsAllContent');
+      const missedContent = document.getElementById('recentsMissedContent');
+      if (missedContent) missedContent.classList.remove('hidden');
+      if (allContent) allContent.classList.add('hidden');
+      this.classList.add('text-[#00F0FF]', 'border-[#00F0FF]');
+      this.classList.remove('text-gray-400', 'border-transparent');
+      if (recentsAllTab) {
+        recentsAllTab.classList.remove('text-[#00F0FF]', 'border-[#00F0FF]');
+        recentsAllTab.classList.add('text-gray-400', 'border-transparent');
+      }
+    });
+  }
+
+  // ---- AVAILABLE TAB ----
+  const availableTab = document.getElementById('availableTab');
+  const chatsTab = document.getElementById('chatsTab');
+  if (availableTab) {
+    availableTab.addEventListener('click', function() {
+      const chatList = document.getElementById('activeChatList');
+      const emptyState = document.getElementById('emptyState');
+      if (chatList) chatList.classList.add('hidden');
+      if (emptyState) emptyState.classList.remove('hidden');
+    });
+  }
+  if (chatsTab) {
+    chatsTab.addEventListener('click', function() {
+      const chatList = document.getElementById('activeChatList');
+      const emptyState = document.getElementById('emptyState');
+      if (chatList) chatList.classList.remove('hidden');
+      if (emptyState) emptyState.classList.add('hidden');
+    });
+  }
+
+  // ---- TRANSACTION TABS ----
+  const txnCoinsTab = document.getElementById('txnCoinsTab');
+  const txnPaymentsTab = document.getElementById('txnPaymentsTab');
+  if (txnCoinsTab) {
+    txnCoinsTab.addEventListener('click', function() {
+      const coinsContent = document.getElementById('txnCoinsContent');
+      const paymentsContent = document.getElementById('txnPaymentsContent');
+      if (coinsContent) coinsContent.classList.remove('hidden');
+      if (paymentsContent) paymentsContent.classList.add('hidden');
+      this.classList.add('text-[#00F0FF]', 'border-[#00F0FF]');
+      this.classList.remove('text-gray-400', 'border-transparent');
+      if (txnPaymentsTab) {
+        txnPaymentsTab.classList.remove('text-[#00F0FF]', 'border-[#00F0FF]');
+        txnPaymentsTab.classList.add('text-gray-400', 'border-transparent');
+      }
+    });
+  }
+  if (txnPaymentsTab) {
+    txnPaymentsTab.addEventListener('click', function() {
+      const coinsContent = document.getElementById('txnCoinsContent');
+      const paymentsContent = document.getElementById('txnPaymentsContent');
+      if (paymentsContent) paymentsContent.classList.remove('hidden');
+      if (coinsContent) coinsContent.classList.add('hidden');
+      this.classList.add('text-[#00F0FF]', 'border-[#00F0FF]');
+      this.classList.remove('text-gray-400', 'border-transparent');
+      if (txnCoinsTab) {
+        txnCoinsTab.classList.remove('text-[#00F0FF]', 'border-[#00F0FF]');
+        txnCoinsTab.classList.add('text-gray-400', 'border-transparent');
+      }
+    });
+  }
+
+  // ---- LANGUAGE BOTTOM SHEET ----
+  document.querySelectorAll('.lang-card').forEach(card => {
+    card.addEventListener('click', function() {
+      document.querySelectorAll('.lang-card').forEach(c => {
+        c.classList.remove('border-2', 'border-[#00F0FF]', 'bg-[#00F0FF]/10');
+        const check = c.querySelector('.fa-check-circle');
+        if (check) check.remove();
+      });
+      this.classList.add('border-2', 'border-[#00F0FF]', 'bg-[#00F0FF]/10');
+      const check = document.createElement('i');
+      check.className = 'fas fa-check-circle text-[#00F0FF] text-xs';
+      this.querySelector('span:first-child')?.appendChild(check);
+    });
+  });
+
+  // ---- EDIT PROFILE ----
+  async function saveProfile() {
+    const nick = document.getElementById('nickNameInput').value.trim();
+    if (nick) {
+      state.userName = nick;
+      localStorage.setItem('userName', nick);
+      updateProfileUI();
+      state.coins += 50;
+      updateCoinsUI();
+      await syncProfileToSupabase(nick, state.userGender);
+      showToast('✅ Profile updated! +50 bonus coins!', 'success');
+    }
+    closeModal('editProfileModal');
+  }
+
+  // ---- LOGOUT ----
+  async function logoutUser() {
+    if (confirm('Are you sure you want to logout?')) {
+      await setUserOffline();
+      state.isVerified = false;
+      localStorage.setItem('isVerified', 'false');
+      closeModal('settingsModal');
+      state.onboardingSlide = 0;
+      showSlide(0);
+      navigateTo('onboarding');
+    }
+  }
+
+  // ---- COINS ----
+  function updateCoinsUI() {
+    const homeCoinsEl = document.getElementById('homeCoins');
+    const drawerCoinsEl = document.getElementById('drawerCoins');
+    const txnCoinsEl = document.getElementById('txnCoins');
+    const profileCoinsEl = document.getElementById('profileCoins');
+    const chatStatus = document.getElementById('chatCoinStatus');
+    if (homeCoinsEl) homeCoinsEl.textContent = state.coins;
+    if (drawerCoinsEl) drawerCoinsEl.textContent = state.coins;
+    if (txnCoinsEl) txnCoinsEl.textContent = state.coins;
+    if (profileCoinsEl) profileCoinsEl.textContent = state.coins;
+    if (chatStatus) chatStatus.textContent = state.coins + ' coins';
+    const callBalance = document.getElementById('callCoinsBalance');
+    if (callBalance) callBalance.textContent = state.coins;
+  }
+
+  function openCoinStore() {
+    const modal = document.getElementById('coinStoreModal');
+    if (modal) modal.classList.remove('hidden');
+    const nav = document.getElementById('bottomNav');
+    if (nav) nav.classList.add('hidden');
+  }
+  function closeCoinStore() {
+    const modal = document.getElementById('coinStoreModal');
+    if (modal) modal.classList.add('hidden');
+    if (['home','rooms','frnd','inbox','recents','profile'].includes(state.currentScreen)) {
+      const nav = document.getElementById('bottomNav');
+      if (nav) nav.classList.remove('hidden');
+    }
+  }
+  async function buyCoins(amount) {
+    state.coins += amount;
+    updateCoinsUI();
+    await updateUserCoinsInSupabase(state.coins);
+    showToast(`💰 ${amount} coins added!`, 'success');
+  }
+  function shareAppOnWhatsApp() {
+    showToast('📤 Sharing YARANA via WhatsApp... +50 coins earned!', 'success');
+    state.coins += 50;
+    updateCoinsUI();
+  }
+
+  // ---- GIFT SYSTEM ----
+  function sendGift(name, cost) {
+    if (state.coins < cost) {
+      showToast(`Not enough coins! Need ${cost} coins for ${name}.`, 'warning');
+      return;
+    }
+    state.coins -= cost;
+    updateCoinsUI();
+    launchConfetti();
+    showToast(`🎁 Sent ${name}! -${cost} coins`, 'success');
+    const rankingItems = document.querySelectorAll('#ludoTheme .flex.justify-between.text-xs');
+    if (rankingItems.length >= 3) {
+      const you = rankingItems[2];
+      const current = parseInt(you.textContent.match(/\d+/)?.[0] || 0);
+      you.innerHTML = `<span>3. You</span><span>❤️ ${current + 1}</span>`;
+    }
+    const waitlist = document.getElementById('waitlistContainer');
+    if (waitlist) {
+      const entry = document.createElement('div');
+      entry.className = 'flex justify-between text-xs text-gray-300';
+      entry.innerHTML = `<span>You</span><span class="text-green-400">Gifted ${name}</span>`;
+      waitlist.prepend(entry);
+    }
+  }
+
+  // ---- RENDER BUBBLES ----
+  function renderBubbles() {
+    const canvas = document.getElementById('bubbleCanvas');
+    if (!canvas) return;
+    canvas.innerHTML = '';
+    bubbleUsers.forEach((u, i) => {
+      const div = document.createElement('div');
+      div.className = 'bubble';
+      const size = 60 + Math.random()*30;
+      div.style.width = size+'px';
+      div.style.height = size+'px';
+      div.style.left = (10 + Math.random()*70) + '%';
+      div.style.top = (10 + Math.random()*70) + '%';
+      div.style.animationDelay = (i*0.3)+'s';
+      div.innerHTML = `<span class="text-lg">${u.gender === 'male' ? '👦' : '👧'}</span><span class="text-[10px] font-semibold">${u.name}</span><span class="text-[8px] bg-[#1a1435] px-1 rounded-full">${u.lang}</span>`;
+      div.onclick = () => showToast(`✨ ${u.name} · ${u.lang}`, 'info');
+      canvas.appendChild(div);
+    });
+  }
+
+  // ---- CONFETTI ----
+  function launchConfetti() {
+    for (let i=0; i<20; i++) {
+      const el = document.createElement('div');
+      el.style.cssText = `position:fixed; left:${Math.random()*100}%; top:-10px; width:8px; height:8px; background:${['#FF2E93','#00F0FF','#FFD700','#FF6B6B'][Math.floor(Math.random()*4)]}; border-radius:50%; pointer-events:none; z-index:999; transition: all 1.5s ease;`;
+      document.body.appendChild(el);
+      setTimeout(() => { el.style.transform = `translateY(${window.innerHeight}px) translateX(${Math.random()*200-100}px) rotate(${Math.random()*360}deg)`; }, 50);
+      setTimeout(() => el.remove(), 2000);
+    }
+  }
+
+  // ---- CHAT ----
+  async function openChatWindow(name) {
+    state.chatPartner = name;
+    state.chatMsgCount = 0;
+    const nameEl = document.getElementById('chatPartnerName');
+    if (nameEl) nameEl.textContent = name;
+    const container = document.getElementById('chatMessages');
+    if (container) {
+      container.innerHTML = '';
+      const msgs = await db.messages.where('partnerId').equals(name).toArray();
+      if (msgs.length === 0) {
+        const welcome = { partnerId: name, senderId: 'other', text: '👋 Hi! How are you?', timestamp: Date.now() };
+        await db.messages.add(welcome);
+        container.innerHTML = `<div class="chat-bubble other">👋 Hi! How are you?</div>`;
+      } else {
+        msgs.sort((a,b) => a.timestamp - b.timestamp);
+        msgs.forEach(m => {
+          const div = document.createElement('div');
+          div.className = `chat-bubble ${m.senderId === 'me' ? 'me' : 'other'}`;
+          div.textContent = m.text;
+          container.appendChild(div);
+        });
+      }
+    }
+    const modal = document.getElementById('chatModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+    updateCoinsUI();
+    if (container) container.scrollTop = container.scrollHeight;
+  }
+  function closeChatWindow() {
+    const modal = document.getElementById('chatModal');
+    if (modal) modal.style.display = 'none';
+  }
+  function openChatFromRoom() {
+    if (state.coins < 10) {
+      showToast('Need 10 coins.', 'warning');
+      return;
+    }
+    openChatWindow('RoomUser');
+  }
+  async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (!msg) return;
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    let filtered = msg;
+    if (state.safetyMode) {
+      const bad = ['bad','stupid','idiot','fool'];
+      bad.forEach(w => { if(filtered.toLowerCase().includes(w)) filtered = filtered.replace(new RegExp(w,'gi'), '****'); });
+    }
+    await db.messages.add({ partnerId: state.chatPartner, senderId: 'me', text: filtered, timestamp: Date.now() });
+    const meDiv = document.createElement('div');
+    meDiv.className = 'chat-bubble me';
+    meDiv.textContent = filtered;
+    container.appendChild(meDiv);
+    input.value = '';
+    state.chatMsgCount++;
+    if (state.chatMsgCount % 4 === 0) {
+      if (state.coins < 10) {
+        showToast('Not enough coins!', 'warning');
+        return;
+      }
+      state.coins -= 10;
+      updateCoinsUI();
+    }
+    setTimeout(async () => {
+      const replyText = ['Haha 😄','Nice!','Cool','Tell me more','😊'][Math.floor(Math.random()*5)];
+      await db.messages.add({ partnerId: state.chatPartner, senderId: 'other', text: replyText, timestamp: Date.now() });
+      const reply = document.createElement('div');
+      reply.className = 'chat-bubble other';
+      reply.textContent = replyText;
+      container.appendChild(reply);
+      container.scrollTop = container.scrollHeight;
+    }, 600);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // ---- SAFETY ----
+  function toggleSafetyMode() {
+    const toggle = document.getElementById('safetyToggle');
+    state.safetyMode = toggle?.checked || false;
+    showToast(`Safety mode ${state.safetyMode ? 'ON' : 'OFF'}`, 'info');
+  }
+
+  // ---- DRAWER ----
+  function toggleDrawer() {
+    const drawer = document.getElementById('sideDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+    if (drawer) drawer.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('show');
+  }
+
+  // ---- AD ----
+  function triggerAd() {
+    const overlay = document.getElementById('adOverlay');
+    if (overlay) overlay.style.display = 'flex';
+    let count = 5;
+    const countEl = document.getElementById('adCountdown');
+    const progress = document.getElementById('adProgress');
+    if (countEl) countEl.textContent = count;
+    if (progress) progress.style.width = '0%';
+    const interval = setInterval(() => {
+      count--;
+      if (countEl) countEl.textContent = count;
+      if (progress) progress.style.width = ((5-count)/5*100)+'%';
+      if (count <= 0) {
+        clearInterval(interval);
+        if (overlay) overlay.style.display = 'none';
+        state.coins += 10;
+        updateCoinsUI();
+        showToast('🎉 +10 coins earned!', 'success');
+      }
+    }, 1000);
+  }
+
+  // ---- NAV ITEMS ----
+  navItems.forEach(item => {
+    item.addEventListener('click', function() {
+      const nav = this.dataset.nav;
+      if (nav === 'home') navigateTo('home');
+      else if (nav === 'rooms') navigateTo('rooms');
+      else if (nav === 'frnd') navigateTo('frnd');
+      else if (nav === 'inbox') navigateTo('inbox');
+      else if (nav === 'recents') navigateTo('recents');
+      else if (nav === 'profile') navigateTo('profile');
+    });
+  });
+
+  // ---- INIT ----
+  // Setup Supabase auth listener FIRST
+  if (state.isSupabaseConfigured) {
+    setupAuthListener();
+  }
+
+  // Check for existing session or redirect
+  if (state.isVerified && state.userGender && state.language) {
+    if (state.isFirstTime) {
+      navigateTo('welcome');
+    } else {
+      navigateTo('home');
+      setTimeout(() => {
+        renderStories();
+        renderConnectNow();
+        renderRooms();
+      }, 300);
+    }
+    syncProfileToSupabase(state.userName || 'Max', state.userGender);
+  } else if (state.isVerified && state.userGender) {
+    state.onboardingSlide = 4;
+    showSlide(4);
+  } else if (state.isVerified) {
+    state.onboardingSlide = 3;
+    showSlide(3);
+  } else {
+    state.onboardingSlide = 0;
+    showSlide(0);
+  }
+
+  updateCoinsUI();
+  initDailyCoins();
+  updateAllAvatars(state.avatarBase64);
+  updateFollowButtons();
+  updateFollowingCount();
+  updateFollowersCount();
+  updateProfileUI();
+
+  const chatModal = document.getElementById('chatModal');
+  if (chatModal) {
+    chatModal.addEventListener('click', function(e) {
+      if (e.target === this) closeChatWindow();
+    });
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeCoinStore();
+      closeCreateRoomSheet();
+      closeChatWindow();
+      closeModal('editProfileModal');
+      closeModal('transactionHistoryModal');
+      closeModal('blockedChatsModal');
+      closeModal('rewardWalletModal');
+      closeModal('settingsModal');
+      closeModal('expertApplyModal');
+      closeModal('expertProgressModal');
+      closeModal('activeVoiceRoom');
+      closeModal('followingListModal');
+      closeModal('followersModal');
+      closeBottomSheet('appLanguageBottomSheet');
+      closeGenderSheet();
+      closeCalendarSheet();
+      const countdown = document.getElementById('countdownOverlay');
+      if (countdown) countdown.style.display = 'none';
+      const callOverlay = document.getElementById('callOverlay');
+      if (callOverlay && callOverlay.style.display !== 'none') endCall();
+    }
+  });
+
+  console.log('🚀 YARANA · Google OAuth with Husky Den design implemented');
+</script>
+</body>
+</html>
